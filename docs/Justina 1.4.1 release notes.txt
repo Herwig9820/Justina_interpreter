@@ -1,0 +1,60 @@
+-------------------------------------------------
+Justina interpreter library                                              
+Copyright 2024, 2025 Herwig Taveirne 
+
+https://github.com/Herwig9820/Justina_interpreter
+
+Release notes
+-------------------------------------------------
+
+v1.1.1 (May 29, 2024)
+------
+initial version
+
+v1.2.1 (July 2, 2024)		
+---------------------
+new functionality: 
+- when a program is deleted, any breakpoints set receive status 'draft' instead of being deleted.
+- introduction of two new commands: moveBP (move breakpoint to another source line) and BPactivate (remove breakpoint status 'draft') 
+- clearBP command can now clear all breakpoints at once, without having to specify source lines
+- user manual adapted to cover new functionality
+bugs solved:
+- creating a Justina object without passing input and output streams does not correctly initialize default input and output stream
+- clearProg and clearMem command: char array too short, risking memory corruption
+- loadProg command: default console does not always refer to correct input stream
+
+v1.3.1 (July 30, 2024)
+----------------------
+new functionality:
+- user c++ functions, implementing 'external' (c++) Justina commands (NOT returning a result)
+- Justina procedures ('procedure(...);', NOT returning a value)
+- debugging: layout of STOP and BREAK lines changed to increase clarity
+- user manual adapted to cover new functionality
+bugs solved:
+- processor resets or hangs when using r() function 
+- if undefined function encountered in program: processor resets or hangs while printing function name  
+
+v1.3.2 (February 14, 2025)
+--------------------------
+new functionality:
+- Arduino nano 33 BLE microcontroller added (ARDUINO_ARCH_NRF52840 architecture)
+ 
+v1.3.3 (February 15, 2025)
+--------------------------
+- library version correctly maintained in library.properties file (no new features)
+
+v1.4.1 (September 8, 2025)
+-------------------------- 
+- various small improvements and bug corrections
+- simple 'TCP keep alive' feature implemented in Justina example program 'Justina_TCPIP_server.ino'  
+- new example program 'Justina_TCPIP_server_multi.ino' (multiple concurrent clients and client session management)
+- new Justina-language program 'web_cal2.jus' (scientific calculator as a web page, multiple concurrent clients and client session management),
+  works together with 'Justina_TCPIP_server_multi.ino'
+- implementation of batch files:
+  * batch files can call other batch files
+  * call a batch file, passing up to 9 arguments
+  * labels, conditional loops
+  * load and execute programs automatically
+- autostart functionality (if SD card connected): executes batch file 'autorun.jba' (if found) after power on or reset  
+
+

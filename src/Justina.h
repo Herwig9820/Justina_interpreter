@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -87,8 +87,8 @@
 
 #define J_productName "Justina: JUST an INterpreter for Arduino"
 #define J_legalCopyright "Copyright 2024, 2025 Herwig Taveirne"
-#define J_version "1.3.3"            
-#define J_buildDate "February 15, 2025" 
+#define J_version "1.4.1"            
+#define J_buildDate "September 8, 2025" 
 
 
 // ******************************************************************
@@ -181,6 +181,7 @@ private:
         // value 1: block type
         block_none,                                                     // command is not a block command
         block_JustinaFunction,
+        block_batchFile,
         block_for,
         block_while,
         block_if,
@@ -188,7 +189,7 @@ private:
         block_genericEnd,                                               // ends any type of open block
 
         block_eval,                                                     // execution only, signals execution of parsed eval() string 
-        block_trigger,                                                  // execution only, signals execution of parsed trigger string
+        block_condition,                                                // execution only, signals execution of parsed condition string
 
         // value 2, 3, 4: position in open block, min & max position of previous block command within same block level
         block_na,                                                       // not applicable for this block type
@@ -243,9 +244,9 @@ private:
         cmdcod_stepOutOfBlock,
         cmdcod_stepToBlockEnd,
         cmdcod_setNextLine,
-        cmdcod_trace,
-        cmdcod_traceExprOn,
-        cmdcod_traceExprOff,
+        cmdcod_watch,
+        cmdcod_watchExprOn,
+        cmdcod_watchExprOff,
         cmdcod_debug,
         cmdcod_BPon,
         cmdcod_BPoff,
@@ -281,6 +282,10 @@ private:
         cmdcod_angle,
         cmdcod_declCB,
         cmdcod_loadProg,
+        cmdcod_execBatchFile,       // batch files only: exec batch file and return to calling batch file
+        cmdcod_ditchBatchFile,      // batch files only: ditch all remaining commands in batch file, return to calling batch file (or console)
+        cmdcod_gotoLabel,           // batch files only: goto numeric label in batch file 
+        cmdcod_silent,
         cmdcod_receiveFile,
         cmdcod_sendFile,
         cmdcod_copyFile,
@@ -337,6 +342,7 @@ private:
         fnccod_nl,
         fnccod_format,
         fnccod_sysVal,
+        fnccod_batchFilePar,
 
         fnccod_ltrim,
         fnccod_rtrim,
@@ -442,7 +448,7 @@ private:
         fnccod_rewindDirectory,
         fnccod_openNextFile,
         fnccod_fileNumber,
-        fnccod_hasOpenFile,
+        fnccod_slotHasOpenFile,
         fnccod_closeAll,
         fnccod_exists,
         fnccod_mkdir,
@@ -605,6 +611,7 @@ private:
         valcod_file3,
         valcod_file4,
         valcod_file5,
+        valcod_discard,
 
         // file access group
         valcod_read,
@@ -616,17 +623,17 @@ private:
         valcod_trunc,
 
         // format specifier group
-        valcod_fixed,            // for floating point numbers
+        valcod_fixed,                                                   // for floating point numbers
         valcod_exp_upper,
         valcod_exp,
         valcod_short_upper,
         valcod_short,
-        
-        valcod_dec,              // for integers
+
+        valcod_dec,                                                     // for integers
         valcod_hex_upper,
         valcod_hex,
 
-        valcod_chars,            // for text
+        valcod_chars,                                                   // for text
 
         // formatting flags group
         valcod_fmt_left,
@@ -648,11 +655,11 @@ private:
 
     enum tokenType_type {                                               // token type
         tok_no_token,                                                   // no token to process
-        tok_isInternCommand,
-        tok_isExternCommand,
-        tok_isInternCppFunction,
-        tok_isExternCppFunction,
-        tok_isJustinaFunction,
+        tok_isInternCommand,                                            // internal Justina command (e.g. 'dispWidth')
+        tok_isExternCommand,                                            // external command (user command written in c++ )       
+        tok_isInternCppFunction,                                        // internal Justina cpp function (e.g. 'sin')
+        tok_isExternCppFunction,                                        // external function (user function written in c++ )
+        tok_isJustinaFunction,                                          // Justina function (user function written in Justina)
         tok_isConstant,
         tok_isSymbolicConstant,                                         // predefined Justina constant
         tok_isVariable,                                                 // including constant variables (CONST)
@@ -663,8 +670,12 @@ private:
         tok_isTerminalGroup2,                                           // if index between 16 and 31
         tok_isTerminalGroup3,                                           // if index between 32 and 47
 
-        tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of trigger strings
+        tok_isEvalEnd,                                                  // execution only, signals end of parsed eval() statements and of condition strings
     };
+
+
+    // reading text file: current state
+    enum textState { defaultState, lineStart, withinString, stringEscCharRead, afterFirstCommentSlash };
 
 
     // error codes for all PARSING errors
@@ -765,7 +776,9 @@ private:
         result_cmd_programCmdMissing = 1800,
         result_cmd_onlyProgramStart,
         result_cmd_onlyImmediateMode,
-        result_cmd_onlyImmModeFirstStatement,
+        result_cmd_onlyCommandLineStart,
+        result_cmd_onlyCommandLine,
+        result_cmd_onlyInBatchFile,
         result_cmd_onlyInsideProgram,
         result_cmd_onlyInsideFunction,
         result_cmd_onlyOutsideFunction,
@@ -773,6 +786,8 @@ private:
         result_cmd_onlyInProgOutsideFunction,
         result_cmd_onlyImmediateNotWithinBlock,
         result_cmd_usageRestrictionNotValid,
+        result_cmd_notAllowedInDebugMode,
+        result_cmd_onlyInDebugMode,
 
         result_cmd_expressionExpectedAsPar,
         result_cmd_varWithoutAssignmentExpectedAsPar,
@@ -786,10 +801,6 @@ private:
         result_cmd_argumentMissing,
         result_cmd_tooManyArguments,
 
-        // user callback errors
-        result_userCB_allAliasesSet = 1900,
-        result_userCB_aliasRedeclared,
-
         // block command errors
         result_block_noBlockEnd = 2000,
         result_block_noOpenBlock,
@@ -798,19 +809,19 @@ private:
         result_block_notAllowedInThisOpenBlock,
         result_block_wrongBlockSequence,
 
-        // tracing, eval() and other PARSING errors during EXECUTION phase
-        result_trace_eval_commandNotAllowed = 2100,
-        result_trace_eval_genericNameNotAllowed,
-        result_trace_userFunctonNotAllowed,                             // tracing restriction only
-        result_trace_evalFunctonNotAllowed,                             // tracing restriction only
+        // expression watching, eval() and other PARSING errors during EXECUTION phase
+        result_watch_eval_commandNotAllowed = 2100,
+        result_watch_eval_genericNameNotAllowed,
+        result_watch_userFunctonNotAllowed,                             // expression watching restriction only
+        result_watch_evalFunctonNotAllowed,                             // expression watching restriction only
         result_parseList_stringNotComplete,
         result_parseList_valueToParseExpected,
 
         // breakpoint errors
         result_BP_lineRangeTooLong,
         result_BP_lineTableMemoryFull,
-        result_BP_emptyTriggerString,
-        result_BP_triggerString_nothingToEvaluate,
+        result_BP_emptyConditionString,
+        result_BP_conditionString_nothingToEvaluate,
 
         // other program errors
         result_parse_abort = 2200,
@@ -820,8 +831,10 @@ private:
 
 public:
     // error codes for all EXECUTION errors
+    // if error trapping is enabled, execution errors that occur do not terminate the program; instead the execution error code is returned
+    // the program can then test the returned error code against specific execution error codes as defined beneath 
     enum execResult_type {
-        result_execOK = 0,
+        result_exec_OK = 0,
 
         // start of valid exec error range (tested upon return of user cpp functions containing an error code)
         result_startOfExecErrorRange = 3000,
@@ -859,11 +872,8 @@ public:
         result_divByZero,
         result_testexpr_numberExpected,
 
-        // abort, kill, quit
-        result_noProgramStopped = 3300,                                 // 'go' command not allowed because not in debug mode
-
         // breakpoint errors
-        result_BP_sourcelineNumberExpected = 3400,
+        result_BP_sourcelineNumberExpected = 3300,
         result_BP_invalidSourceLine,                                    // allowed range: 1 - 99999
         result_BP_notAllowedForSourceLine,                              // no statement starting at source line
         result_BP_statementIsNonExecutable,                             // statement is non-executable
@@ -878,15 +888,15 @@ public:
         result_BP_nonExecStatementsInTable,
 
         // evaluation and list parsing function errors
-        result_eval_emptyString = 3500,
+        result_eval_emptyString = 3400,
         result_eval_nothingToEvaluate,
         result_eval_parsingError,
         result_list_parsingError,
 
         // SD card
-        result_SD_noCardOrNotAllowed = 3600,
+        result_SD_noCardOrNotAllowed = 3500,
         result_SD_noCardOrCardError,
-        result_SD_fileNotFound,
+        result_SD_fileNotFoundOrEmpty,
         result_SD_couldNotOpenFile,                                     // or file does not exist 
         result_SD_fileIsNotOpen,
         result_SD_fileAlreadyOpen,
@@ -901,11 +911,17 @@ public:
         result_SD_pathIsNotValid,
         result_SD_sourceIsDestination,
         result_SD_fileNotAllowedHere,
+        result_SD_fileNameExpected,
+        result_SD_pathMustStartFromRootDir,
+        result_SD_isOpenSystemFile,
+        result_SD_openBatchFiles_cannotStopSDcard,
 
         // IO streams
-        result_IO_invalidStreamNumber = 3700,
+        result_IO_invalidStreamNumber = 3600,
         result_IO_noDeviceOrNotForInput,
         result_IO_noDeviceOrNotForOutput,
+        result_IO_onlyAllowedInBatchFile,
+        result_IO_batchFileLabelNotFound,
 
         // end of valid exec error range (tested upon return of user cpp functions containing an error code)
         result_endOfExecErrorRange = 4999,
@@ -922,10 +938,10 @@ public:
         EVENT_kill,                                                     // caller requested to exit Justina interpreter
         EVENT_quit,                                                     // 'Quit' command executed (exit Justina interpreter)
 
-        result_initiateProgramLoad                                      // command processed to start loading a program
+        EVENT_initiateProgramLoad,                                      // command processed to start loading a program
     };
-private:
 
+private:
     // debug codes
     enum dbType_type {
         db_continue = 0,
@@ -977,8 +993,8 @@ private:
     // ------------------------------------------------------------------------------------------------------
 
     // (1) display and (2) fmt() settings
-    // -> display: last values, command line echo, tracing, print commands
-    // -------------------------------------------------------------------
+    // -> display: last values, command line echo, expression watching, print commands
+    // -------------------------------------------------------------------------------
 
 
     // maximum values
@@ -1116,28 +1132,34 @@ private:
     // commands: usage restrictions - tested during PARSING
     // ----------------------------------------------------
 
-    // bits b3210: indicate command (not parameter) usage restrictions 
+    // bits b3210: indicate command (not parameter) usage restrictions: WHERE IN CODE can it be used ? 
     static constexpr char cmd_usageRestrictionMask = 0x0F;              // mask
 
     static constexpr char cmd_noRestrictions = 0x00;                    // command has no usage restrictions 
     static constexpr char cmd_onlyInProgram = 0x01;                     // command is only allowed inside a program
     static constexpr char cmd_onlyInProgOutsideFunc = 0x02;             // command is only allowed inside a program, outside a function block
     static constexpr char cmd_onlyInFunctionBlock = 0x03;               // command is only allowed inside a function block
-    static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode
+    static constexpr char cmd_onlyImmediate = 0x04;                     // command is only allowed in immediate mode (command line or batch file line)
     static constexpr char cmd_onlyOutsideFunctionBlock = 0x05;          // command is only allowed outside a function block (so also in immediate mode)
     static constexpr char cmd_onlyImmOrInsideFuncBlock = 0x06;          // command is only allowed inside a function block or in immediate mode
     static constexpr char cmd_onlyProgramTop = 0x07;                    // only as first program statement
-    static constexpr char cmd_onlyImmModeTop = 0x08;                    // only as first user command statement
+    static constexpr char cmd_onlyCommandLineStart = 0x08;              // only as first statement in the command line (not in a batch file line or in a program)
     static constexpr char cmd_onlyImmediateNotWithinBlock = 0x09;       // command is only allowed in immediate mode, and only outside blocks
+    static constexpr char cmd_onlyCommandLine = 0x0A;                   // only allowed in command line (not in a batch file line or in a program)
+    static constexpr char cmd_onlyInBatchFile = 0x0B;                   // only allowed in batch file (not in the command line or in a program)
 
-    // bit b7: skip command during execution
-    static constexpr char cmd_skipDuringExec = 0x80;                    // command is parsed but not executed
+    // bit b765: extra constraints: 
+    static constexpr char cmd_onlyInDebugMode = 0x20;                   // only when debug is active (at least 1 stopped program)
+    static constexpr char cmd_notInDebugMode = 0x40;                    // only when no stopped programs
+    static constexpr char cmd_skipDuringExec = 0x80;                    // skip command during execution: command is parsed but not executed
 
-    // external (user cpp) Justina commands only: usage restriction keys
+    // external (user cpp) Justina commands only: usage restriction keys 
 public:
-    static constexpr char userCmd_noRestriction = cmd_onlyImmOrInsideFuncBlock;     // != cmd_noRestrictions value !
-    static constexpr char userCmd_programOnly = cmd_onlyInFunctionBlock;
-    static constexpr char userCmd_commandLineOnly = cmd_onlyImmediate;
+    static constexpr char userCmd_noRestriction = cmd_onlyImmOrInsideFuncBlock;     // user cpp command is only allowed inside a function block or in immediate mode  
+    static constexpr char userCmd_programOnly = cmd_onlyInFunctionBlock;            // user cpp command is only allowed inside a function block
+    static constexpr char userCmd_immModeOnly = cmd_onlyImmediate;                  // user cpp command is only allowed in immediate mode (command line or batch file line)
+    static constexpr char userCmd_commandLineOnly = cmd_onlyCommandLine;            // user cpp command is only allowed in command line
+    static constexpr char userCmd_BatchFileOnly = cmd_onlyInBatchFile;              // user cpp command is only allowed in a batch file
 private:
 
 
@@ -1264,10 +1286,10 @@ public:
     static constexpr long SD_notAllowed = 0x0;                          // card reader not present or card operations not allowed (maybe exclusively in use by Arduino program)
     static constexpr long SD_allowed = 0x1;                             // card reader is allowed but do not initialize card (maybe no SD card inserted, no SD card board present). This is the default
     static constexpr long SD_init = 0x2;                                // init SD card upon Justina begin() 
-    static constexpr long SD_runStart = 0x3;                            // init SD card upon Justina begin(); load program "start.jus(); execute start() 
+    static constexpr long SD_runAutoStart = 0x3;                        // init SD card upon Justina begin(); load program "start.jus(); execute start() 
     static constexpr long MAX_SETUP_ARGS = 8;                           // maximum number of tokens in a setup file line
-    
-    static const char AUTOSTART_FILE_PATH[19];
+
+    inline static constexpr char AUTOSTART_FILE_PATH[]{ "/Justina/autorun.jba" };
 
 private:
 
@@ -1484,13 +1506,13 @@ private:
     static constexpr CmdBlockDef cmdBlockNone{ block_none, block_na, block_na, block_na };                                      // not a 'block' command. NOTE: defined in JustinaMain.cpp
 
     // sizes MUST be specified AND must be exact
-    static const internCmdDef _internCommands[80];                                                                              // keyword names
-    static const InternCppFuncDef _internCppFunctions[141];                                                                     // internal cpp function names and codes with min & max arguments allowed
+    static const internCmdDef _internCommands[84];                                                                              // keyword names
+    static const InternCppFuncDef _internCppFunctions[142];                                                                     // internal cpp function names and codes with min & max arguments allowed
     static const TerminalDef _terminals[40];                                                                                    // terminals (including operators)
 #if (defined ARDUINO_ARCH_ESP32) 
-    static const SymbNumConsts _symbNumConsts[82];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[83];                                                                              // predefined constants
 #else
-    static const SymbNumConsts _symbNumConsts[79];                                                                              // predefined constants
+    static const SymbNumConsts _symbNumConsts[80];                                                                              // predefined constants
 #endif
     static constexpr int _internCommandCount{ sizeof(_internCommands) / sizeof(_internCommands[0]) };                           // count of keywords in keyword table 
     static constexpr int _internCppFunctionCount{ (sizeof(_internCppFunctions)) / sizeof(_internCppFunctions[0]) };             // count of internal cpp functions in functions table
@@ -1641,17 +1663,29 @@ private:
     //    and flow control data for the CALLED function will now be stored in structure '_activeFunctionData'  
     //    if a function is ended, the corresponding flow control data will be COPIED to structure '_activeFunctionData' again before it is popped from the stack
 
-    struct openBlockGeneric {
-        char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
+    struct OpenBlockGeneric {
+        char blockType : 6;                                             // command block: will identify stack level as a function block or an if...end, for...end, ... block
         char spareFlags : 2;
+
+        char notUsed1 : 4;                                              // statement input stream (0: console input; > 0: batch file input streams)
+        char withParsedStatementLine : 1;                               // !!! MUST OCCUPY SAME POSITION as in OpenFunctionData 
+        char notUsed2 : 3;
+
+        // default constructor for bit field initialization (ensures C++11/C++14 compiler compatibility)
+        OpenBlockGeneric() : blockType(0), spareFlags(0), notUsed1(0), withParsedStatementLine(0), notUsed2(0) {}
     };
 
     struct OpenBlockTestData {
         char blockType : 6;                                             // command block: will identify stack level as an if...end, for...end, ... block
         char spareFlags : 2;
-        char loopControl;                                               // flags: within iteration, request break from loop, test failed
-        char testValueType;                                             // 'for' loop tests: value type used for loop tests
-        char spare;                                                     // boundary alignment
+
+        // next 8 bits MUST OCCUPY SAME POSITION as in OpenFunctionData !!!
+        char notUsed1 : 4;
+        char withParsedStatementLine : 1;
+        char notUsed2 : 3;
+
+        char loopControl{ 0 };                                            // flags: within iteration, request break from loop, test failed
+        char testValueType{ 0 };                                          // 'for' loop tests: value type used for loop tests
 
         // FOR...END loop only
         char* pControlValueType;
@@ -1659,18 +1693,30 @@ private:
         Val step;
         Val finalValue;
         char* nextTokenAddress;                                         // address of token directly following 'FOR...; statement
+
+        // default constructor for bit field initialization (ensures C++11/C++14 compiler compatibility)
+        OpenBlockTestData() : blockType(0), spareFlags(0), notUsed1(0), withParsedStatementLine(0), notUsed2(0) {}
     };
 
-    struct OpenFunctionData {                                           // data about all open functions (active + call stack)
+    struct OpenFunctionData {                                           // data about all open Justina functions (active + call stack)
         char blockType : 6;                                             // command block: will identify stack level as a function block
         char trapEnable : 1;                                            // enable error trapping
         char activeCmd_isInternal : 1;                                  // command is internal
-        char functionIndex;                                             // user function index 
-        char callerEvalStackLevels;                                     // evaluation stack levels in use by caller(s) and main (call stack)
+
+        char statementInputStream : 4;                                  // statement input stream (0: console input; > 0: batch file input streams)
+        char withParsedStatementLine : 1;                               // was pushed together with a parsedStatementLineStack element: POP together as well
+        char spareBits : 3;
+
+        char callerEvalStackLevels : 7;                                 // evaluation stack levels in use by caller(s) and main (call stack)
+        char errorHandlerActive : 1;                                    // an error is being handled in the current function or batch file line
+
+        char functionIndex{};                                           // user function index 
 
         // within a function, as in immediate mode, only one command can be active at a time (ended by semicolon), in contrast to command blocks, which can be nested, so command data can be stored here:
         // data is stored when a keyword is processed and it is cleared when the ending semicolon (ending the command) is processed
-        char activeCmd_commandCode;                                     // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        char activeCmd_commandCode{};                                   // keyword code (set to 'cmdcod_none' again when semicolon is processed)
+        char spareChars[3]{ 0 };                                        // boundary alignment
+
         char* activeCmd_tokenAddress;                                   // address in program memory of parsed keyword token                                
 
         // value area pointers (note: a value is a long, a float or a pointer to a string or array, or (if reference): pointer to 'source' (referenced) variable))
@@ -1681,17 +1727,33 @@ private:
         char* pNextStep;                                                // next step to execute (look ahead)
         char* errorStatementStartStep;                                  // first token in statement where execution error occurs (error reporting)
         char* errorProgramCounter;                                      // token to point to in statement (^) if execution error occurs (error reporting)
-    };
 
+        // default constructor for bit field initialization (ensures C++11/C++14 compiler compatibility)
+        OpenFunctionData() : blockType(block_JustinaFunction), trapEnable(0), activeCmd_isInternal(0), statementInputStream(0), withParsedStatementLine(0),
+            spareBits(0), callerEvalStackLevels(0), errorHandlerActive(0) {
+        };
+    };
 
     // structure to maintain data about open files (SD card)
     // -----------------------------------------------------
 
     struct OpenFile {
         File file;
-        char* filePath{ nullptr };                                      // including file name
-        bool fileNumberInUse{ false };                                  // file number = position in structure (base 0) + 1
         int currentPrintColumn{ 0 };
+        char* filePath{ nullptr };                                      // including file name
+        char fileNumberInUse : 1;                                       // file number = position in structure (base 0) + 1
+        char isSystemFile : 1;                                          // a system file can not be closed by user
+        char spare : 4;
+
+        // batch files: argument count and addresses of copied arguments
+        char lineEndsInMultiLineComment : 1;
+        char silent : 1;                                                // controls console output during batch file execution
+        int argCount{};                                                 // exec command: argument count (batch file name and optional arguments)
+        char* pValueType{ nullptr };                                    // arguments: value type (long, float, string)
+        Val* pArgs{ nullptr };                                          // arguments: values
+
+        // default constructor for bit field initialization (ensures C++11/C++14 compiler compatibility)
+        OpenFile() : fileNumberInUse(0), isSystemFile(0), lineEndsInMultiLineComment(0), silent(0) {}
     };
 
 
@@ -1795,17 +1857,17 @@ private:
 
     bool _constructorInvoked{};
     bool _coldStart{};                                              // is this a cold start (first call to Justina begin() method after Justina object creation) ? (this is unrelated to memory clear on quitting)
-    int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runStart
+    int _justinaStartupOptions{ 0 };                                // see constants SD_notAllowed, SD_allowed, SD_init, SD_runAutoStart
     char _programName[MAX_IDENT_NAME_LEN + 1];
     char* _lastProgramStep{ nullptr };
-    char* _lastUserCmdStep{ nullptr };                              // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
+    char* _lastUserCmdLineStep{ nullptr };                          // location in Justine imm. mode program memory where final 'tok_no_token' token is placed
 
 
     // parsing 
     // -------
 
     bool _programMode{ false };
-    char _statement[MAX_STATEMENT_LEN + 1] = "";                    // character buffer for one statement read from console, SD file or any other external IO channel, ready to be parsed
+    char _sourceStatement[MAX_STATEMENT_LEN + 1] = "";              // character buffer for one statement read from console, SD file or any other external IO channel, ready to be parsed
 
     LinkedList parsingStack;                                        // during parsing: parsing stack keeps track of open parentheses and open blocks
     LE_parsingStack* _pParsingStack;                                // stack used during parsing to keep track of open blocks (e.g. for...end) , functions, open parentheses
@@ -1928,7 +1990,7 @@ private:
     // if statements are currently being executed, structure _activeFunctionData maintains data about either the main program level (command line statements being executed), ...
     // ... the active Justina function (if function being executed), or the internal cpp eval("'string'") function (if expression contained in 'string' being evaluated)
     // _activeFunctionData pushes its current data to / pops it from the flow control stack when a new Justina function or eval() function is called terminates
-    OpenFunctionData _activeFunctionData;
+    OpenFunctionData _activeFunctionData{};
 
     // the flow control stack maintains data about all currently open callers (Justina functions, eval() functions or program main level) AND any open blocks (loops, ...)  
     // => entries from stack TOP (newest entries) to BOTTOM: 
@@ -1942,13 +2004,14 @@ private:
     //
     // if execution of a NEW program is started while in debug mode, the whole process as described above is repeated. So, you can have more than one program being suspended
     LinkedList flowCtrlStack;
-    void* _pFlowCtrlStackTop{ nullptr };                                        // pointers to flow control stack top elements
-    int _callStackDepth{ 0 };                                                   // number of currently open Justina functions + open eval() functions + count of stopped programs (in debug mode): ...
-    // ...this equals flow ctrl stack depth MINUS open loops (if, for, ...)
+    void* _pFlowCtrlStackTop{ nullptr };                                    // pointers to flow control stack top elements
+    int _callStackDepth{ 0 };                                               // number of currently open Justina functions + open eval() functions + open batch files + count of stopped programs...
+                                                                            // ...(in debug mode): this equals flow ctrl stack depth MINUS open loops (if, for, ...)
 
-// while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
-// ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
-    LinkedList parsedCommandLineStack;
+    // while at least one program is stopped (debug mode), the PARSED code of the original command line from where execution started is pushed to a separate stack, and popped again ...
+    // ...when the program resumes, so that execution can continue there. If multiple programs are currently stopped (see: flow control stack), this stack will contain multiple entries
+    // note that this separate 'parsed command line' stack is also used for other purposes 
+    LinkedList parsedStatementLineStack;
     char* _pParsedCommandLineStackTop{ nullptr };
     int _openDebugLevels{ 0 };                                              // number of stopped programs: equals parsed command line stack depth minus open eval() strings (= eval() strings being executed)
 
@@ -1961,10 +2024,11 @@ private:
     int _angleMode{ 0 };                                                    // 0 = radians, 1 = degrees
     int _promptAndEcho{ 2 };                                                // print prompt and print input echo
     int _printLastResult{ 1 };                                              // print last result: 0 = do not print, 1 = print, 2 = print and expand backslash sequences in string constants  
+    bool _silent{ false };
+    bool _withinMultiLineComment{ false };
 
-
-    // display settings (last values, command line echo, tracing, print commands
-    // -------------------------------------------------------------------------
+    // display settings (last values, command line echo, expression watching, print commands
+    // -------------------------------------------------------------------------------------
 
     int _dispWidth = DEFAULT_DISP_WIDTH;
 
@@ -2011,29 +2075,30 @@ private:
     int _stepFlowCtrlStackLevels{ 0 };                                      // total flow control stack levels at the moment of a step, ... debugging command
     int _stepCmdExecuted{ db_continue };                                    // type of debugging command executed (step, ...)
     bool _debugCmdExecuted{ false };                                        // a debug command was executed
-    bool _pendingStopForDebug{ false };                                     // remember to stop anyway if trigger string result (not yet calculated) is zero
+    bool _appFlagStopRequestIsStored{ false };                              // remember app flag request to stop for debug, until it can be honored                                
+    bool _holdStopForDebugWhileConditionEval{ false };                      // remember to stop anyway if condition string result (not yet calculated) is zero
 
     Breakpoints* _pBreakpoints{ nullptr };
 
     // error trapping
     // --------------
 
-    int _trappedExecError{ (int)result_execOK };
+    int _trappedExecError{ (int)result_exec_OK };
     int _trappedEvalParsingError{ (int)result_parsing_OK };
 
-    // evaluation strings (eval("...")), trace and trigger strings
-    // -----------------------------------------------------------
+    // evaluation strings (eval("...")), watch and condition strings
+    // -------------------------------------------------------------
 
     bool _parsingEvalString{ false };
     long _evalParsingError{ 0L };
 
-    bool _parsingExecutingTraceString{ false };
-    bool _printTraceValueOnly{ false };                                     // do not print trace expression, only print trace evaluation result (value)
-    char* _pTraceString{ nullptr };
-    Val _traceResultValue{};
-    char _traceResultValueType{};
+    bool _parsingExecutingWatchString{ false };
+    bool _printWatchValueOnly{ false };                                     // do not print watch expression, only print watch evaluation result (value)
+    char* _pwatchString{ nullptr };
+    Val _watchResultValue{};
+    char _watchResultValueType{};
 
-    bool _parsingExecutingTriggerString{ false };
+    bool _parsingExecutingConditionString{ false };
 
 
     // counting of heap objects
@@ -2104,8 +2169,10 @@ private:
     Stream* _pConsoleIn{ nullptr };
     Print* _pConsoleOut{ nullptr }, * _pDebugOut{ nullptr };
     int _consoleIn_sourceStreamNumber{}, _consoleOut_sourceStreamNumber{}, _debug_sourceStreamNumber{};     // != 0: always originating stream (external or SD)
+    int _discardOut_streamNumber{ 0 };
 
-    int* _pPrintColumns{};                                          // maintains current print column per output stream ( points to array on the heap)
+    int* _pExternPrintColumns{};                                    // maintains current print column per external output stream ( points to array on the heap)
+
     int* _pConsolePrintColumn{ nullptr }, * _pDebugPrintColumn{ nullptr };
     int* _pLastPrintColumn{ nullptr };
 
@@ -2114,6 +2181,7 @@ private:
     int _streamNumberIn{ 0 }, _streamNumberOut{ 0 };
 
     int _externIOstreamCount = 0;                                   // maximum is 4
+    bool _withUserDebug{ true };
 
 #if !defined ARDUINO_ARCH_ESP32
     Sd2Card _SDcard{};
@@ -2204,8 +2272,6 @@ public:
 #endif
     ~Justina();
 
-    void constructorCommonPart();
-
 
     // set pointer to optional system (main) and RTC call back functions
     // -----------------------------------------------------------------
@@ -2232,8 +2298,7 @@ public:
     // -----------------------------------
 
     void begin();                                                   // call from Arduino main program
-    void JustinaMainLoop(bool& loadingStartupProgram, bool& launchingStartFunction,  bool& startJustinaWithoutAutostart,bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent, long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine,
-        long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill, Stream*& pStatementInputStream, int& streamNumber);
+
 
     // Justina print functions
     // -----------------------
@@ -2291,15 +2356,22 @@ public:
     size_t println(char* s);
     size_t println(const char* s);
     size_t println();
+
 private:
 
+    // constructor common part and main loop
+    // -------------------------------------
+
+    void constructorCommonPart();
+    void JustinaMainLoop(bool& doAutoStart, bool& parsedStatementStartsOnNewLine, bool& parsedStatementStartLinesAdjacent,
+        long& statementStartsAtLine, long& parsedStatementAllowingBPstartsAtLine, long& BPstartLine, long& BPendLine, long& BPpreviousEndLine, bool& kill);
 
     // reset Interpreter to clean state
     // --------------------------------
 
-    void resetMachine(bool withUserVariables, bool withBreakpoints = false);
+    void resetMachine(bool withUserVariables, bool withBreakpoints = false, bool keepDebugLevelBatchFile = false);
 
-    void initInterpreterVariables(bool withUserVariables);
+    void initInterpreterVariables(bool withUserVariables, bool keepDebugLevelBatchFile);
     void deleteIdentifierNameObjects(char** pIdentArray, int identifiersInUse, bool isUserVar = false);
     void deleteStringArrayVarsStringObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
     void deleteVariableValueObjects(Val* varValues, char* varType, int varNameCount, int paramOnlyCount, bool checkIfGlobalValue, bool isUserVar = false, bool isLocalVar = false);
@@ -2314,16 +2386,16 @@ private:
     // -------
 
     // read one character from a stream (stream must be set prior to call)
-    char getCharacter(bool& charFetched, bool& killNow, bool& forcedStop, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
+    char getCharacter(bool& charFetched, bool& killNow, bool& forcedAbort, bool& setStdConsole, bool enableTimeOut = false, bool useLongTimeout = false);
 
-    bool flushInputCharacters(bool& stop, bool& forcedAbort);
+    bool flushInputCharacters(bool& forcedAbort);
 
     // add character (as read from stream) to the source statement input buffer; strip comment characters, redundant white space; handle escape sequences within source; ... 
     bool addCharacterToInput(bool& lastCharWasSemiColon, bool& withinString, bool& withinStringEscSequence, bool& within1LineComment, bool& withinMultiLineComment,
         bool& redundantSemiColon, bool isEndOfFile, bool& bufferOverrun, bool  flushAllUntilEOF, long& lineCount, long& statementCharCount, char c);
 
     // parse one statement from source statement input buffer
-    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine = false, long sourceLine = 0);
+    parsingResult_type parseStatement(char*& pInputLine, char*& pNextParseStatement, int& clearIndicator, bool& isSilentOnOffStatement);
     bool parseAsInternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsExternCommand(char*& pNext, parsingResult_type& result);
     bool parseAsNumber(char*& pNext, parsingResult_type& result);
@@ -2336,7 +2408,7 @@ private:
     bool parseAsIdentifierName(char*& pNext, parsingResult_type& result);
 
     // checking command statement syntax
-    bool checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal);
+    bool checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword);
     bool checkCommandArgToken(parsingResult_type& result, int& clearIndicatore, int commandIndex, bool commandIsInternal);
 
     // various checks while parsing
@@ -2357,27 +2429,29 @@ private:
     bool initVariable(uint16_t varTokenStep, uint16_t constTokenStep);
 
     // process parsed input and start execution
-    bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived);
-    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, Stream*& pStatementInputStream, int& statementInputStreamNumber);
+    bool finaliseParsing(parsingResult_type& result, bool& kill, long lineCount, char* pErrorPos, bool allCharsReceived, bool isSilentOnOffStatement);
+    bool prepareForIdleMode(parsingResult_type result, execResult_type execResult, bool& kill, int& clearIndicator, bool isSilentOnOffStatement);
     void clearMemory(int& clearIndicator, bool& kill, bool& quitJustina);
 
     // execution
     // ---------
 
     execResult_type  exec(char* startHere);
-    execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
-    execResult_type  execInternalCommand(bool& isFunctionReturn, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  execParenthesesPair(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedAbortRequest);
+    execResult_type  execInternalCommand(bool& isFunctionReturn, bool& forcedAbortRequest);
     execResult_type  execExternalCommand();
     execResult_type  execAllProcessedOperators();
     execResult_type  execUnaryOperation(bool isPrefix);
     execResult_type  execInfixOperation();
     void makeIntermediateConstant(LE_evalStack* pEvalStackLvl);
-    execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedStopRequest, bool& forcedAbortRequest);
+    execResult_type  execInternalCppFunction(LE_evalStack*& pPrecedingStackLvl, LE_evalStack*& pLeftParStackLvl, int argCount, bool& forcedAbortRequest);
     execResult_type  execExternalCppFncOrCmd(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int maxArgs, bool isCommand = false);
     execResult_type  launchJustinaFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount);
     execResult_type  launchEval(LE_evalStack*& pFunctionStackLvl, char* parsingInput);
-    void  terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
-    void  terminateEval();
+    execResult_type  launchBatchFileExecution(int cmdArgCount, LE_evalStack*& pStackLvl);
+    void terminateJustinaFunction(bool isVoidFunction, bool addZeroReturnValue = false);
+    void terminateEval();
+    void terminateBatchFile();
 
     // Justina functions: initialize parameter variables with provided arguments (pass by reference)
     void initFunctionParamVarWithSuppliedArg(int suppliedArgCount, LE_evalStack*& pFirstArgStackLvl);
@@ -2390,7 +2464,7 @@ private:
     execResult_type testForLoopCondition(bool& fail);
 
     // request the user to answer a Justina question
-    bool getConsoleCharacters(bool& forcedStop, bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator = 0xff);
+    bool getConsoleCharacters(bool& forcedAbort, bool& doCancel, bool& doDefault, char* input, int& length, char terminator = 0xff);
 
     // save result of last expression evaluated into last value buffer
     void saveLastValue(bool& overWritePrevious);
@@ -2405,7 +2479,7 @@ private:
     void pushVariable(int tokenType);
 
     // copy function arguments with attributes from the evaluation stack to value and attribute arrays, for use by internal and external (user callback) functions
-    execResult_type copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
+    void copyValueArgsFromStack(LE_evalStack*& pStackLvl, int argCount, bool* argIsVar, bool* argIsArray, char* valueType, Val* args, bool passVarRefOrConst = false, Val* dummyArgs = nullptr);
 
     // fetch variable base address (where a value is stored, or a pointer to a char*, a source variable (function parameters) or (array variable) the start of array storage (on the heap)
     void* fetchVarBaseAddress(Token_variable* pVarToken, char*& pVarType, char& valueType, char& sourceVarScopeAndFlags);
@@ -2417,7 +2491,7 @@ private:
     // clear execution stacks
     void clearEvalStack();
     void clearEvalStackLevels(int n);
-    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool errorWhileCurrentlyStoppedPrograms = false, bool isAbortCommand = false);
+    void clearFlowCtrlStack(int& deleteImmModeCmdStackLevels, bool terminateOneProgramOnly = false, bool isAbortCommand = false, bool keepExecutingBatchFile = false);
     void clearParsedCommandLineStack(int n);
 
     execResult_type deleteVarStringObject(LE_evalStack* pStackLvl);
@@ -2428,7 +2502,7 @@ private:
     // --------------------------
 
     execResult_type startSD();
-    void SD_closeAllFiles();
+    void SD_closeAllFiles(bool includeSystemFiles = false);
 
 #if defined ARDUINO_ARCH_ESP32
     char* SD_ESP32_convert_accessMode(int mode);
@@ -2438,28 +2512,33 @@ private:
 
     void SD_closeFile(int fileNumber);
     execResult_type SD_listFiles();
-    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowFileTypes = 1);
-    execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowFileTypes = 1);
-    execResult_type setStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false);
-    execResult_type setStream(int streamNumber, bool forOutput = false);
-    execResult_type setStream(int streamNumber, Stream*& pStream, bool forOutput = false);
-    execResult_type determineStream(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false, int allowFileTypes = 1);
-    execResult_type determineStream(int streamNumber, Stream*& pStream, bool forOutput = false, int allowFileTypes = 1);
 
-    bool pathValid(const char* path);
+    execResult_type returnStreamRef(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, Stream*& pStream, int& streamNumber, bool forOutput = false,
+        int allowedFileTypes = 1, bool allowSystemFiles = 0);
+    execResult_type returnStreamRef(int streamNumber, Stream*& pStream, bool forOutput = false, int allowedFileTypes = 1, bool allowSystemFiles = 0);
+
+    execResult_type SD_fileChecks(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
+    execResult_type SD_fileChecks(bool argIsLong, bool argIsFloat, Val arg, File*& pFile, int allowedFileTypes = 1, bool allowSystemFiles = false);
+    execResult_type SD_fileChecks(File*& pFile, int fileNumber, int allowedFileTypes = 1, bool allowSystemFiles = false);
+
+    execResult_type setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(long argIsLongBits, long argIsFloatBits, Val arg, long argIndex, int& streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(int streamNumber, bool forOutput = false, bool allowSystemFiles = false);
+    execResult_type setActiveStreamTo(int streamNumber, Stream*& pStream, bool forOutput = false, bool allowSystemFiles = false);
+
+    execResult_type pathValid(const char* path);
     bool fileIsOpen(const char* path);
 
 
-    // Justina error handling, debugging, tracing
-    // ------------------------------------------
+    // Justina error handling, debugging, expression watching
+    // ------------------------------------------------------
 
     bool trapError(bool& isEndOfStatementSeparator, execResult_type& execResult);
-    void checkTriggerResult(execResult_type& execResult);
-    void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop, bool& isFunctionReturn, char* programCnt_previousStatementStart);
-    void parseAndExecTraceOrBPviewString(int BPindex = -1);
-    void traceAndPrintDebugInfo(execResult_type execResult);
-    parsingResult_type parseTriggerString(int BPindex);
+    void checkConditionResult(execResult_type& execResult);
+    void checkForStop(bool& isActiveBreakpoint, bool& doStopForDebugNow, bool& appFlagsRequestStop, char* programCnt_previousStatementStart);
+    void parseAndExecWatchOrBPwatchString(int BPindex = -1);
+    void printDebugInfo(execResult_type execResult);
+    parsingResult_type parseConditionString(int BPindex);
 
     // printing
     // --------    
@@ -2471,10 +2550,10 @@ private:
     void printToString(int width, int precision, bool inputIsString, bool isIntFmt, char* valueType, Val* operands, char* fmtString,
         Val& fcnResult, int& charsPrinted, bool expandStrings = false);
 
-    // unparse statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
+    // 'unparse' statement and pretty print, print parsing result (OK or error number), print variables, print call stack, SD card directory
     void prettyPrintStatements(int outputStream, int instructionCount, char* startToken = nullptr, char* errorProgCounter = nullptr, int* sourceErrorPos = nullptr);
     void printParsingResult(parsingResult_type result, int funcNotDefIndex, char* const pInputLine, long lineCount, char* pErrorPos);
-    void printExecError(execResult_type execResult, bool showStopmessage);
+    void printExecError(execResult_type execResult);
     void printVariables(bool userVars);
     void printCallStack();
     void printDirectory(File dir, int numTabs);
@@ -2483,7 +2562,7 @@ private:
     // system (main) callbacks
     // -----------------------
 
-    void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedStop = nullptr, bool* pForcedAbort = nullptr, bool* pSetStdConsole = nullptr);
+    void execPeriodicHousekeeping(bool* pKillNow, bool* pForcedAbort = nullptr, bool* pSetStdConsole = nullptr);
 
 
     // utilities
@@ -2493,7 +2572,7 @@ private:
     void quoteAndExpandEscSeq(char*& input);
 
     // find / jump to tokens in program memory
-    int findTokenStep(char*& pStep, bool excludeCurrent, char tokenTypeToFind, char criterium1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
+    int findTokenStep(char*& pStep, bool excludeCurrent, char tokenTypeToFind, char criterium1 = -1, char criterium2 = -1, char criterium3 = -1, int* matchedCritNum = nullptr, int* tokenIndex = nullptr);
     int jumpTokens(int n, char*& pStep, int& tokenCode);
     int jumpTokens(int n, char*& pStep);
     int jumpTokens(int n);
@@ -2519,16 +2598,19 @@ private:
 
     struct BreakpointData {
         char BPenabled : 1;                             // breakpoint is enabled (program will stop)
-        char BPwithViewExpr : 1;
-        char BPwithHitCount : 1;
-        char BPwithTriggerExpr : 1;
+        char BPwithWatchExpr : 1;                       // flag: breakpoint has (a) watch expression(s)
+        char BPwithHitCount : 1;                        // flag: breakpoint has a hit count
+        char BPwithConditionExpr : 1;                   // flag: breakpoint has a condition expression
 
         long sourceLine{ 0 };                           // if breakpoint encountered, inform user on what source line
         char* pProgramStep{ nullptr };                  // compare with current program counter to find breakpoint entry 
-        char* pView{ nullptr };                         // pointer to view expression (string)
-        char* pTrigger{ nullptr };                      // pointer to trigger expression (string)
+        char* pWatch{ nullptr };                        // pointer to watch expressions separated by semicolons (string)
+        char* pCondition{ nullptr };                    // pointer to condition expression (string)
         long hitCount{ 0 };                             // pointer to number of hits triggering breakpoint
         long hitCounter{ 0 };                           // hit counter
+
+        // default constructor for bit field initialization (ensures C++11/C++14 compiler compatibility)
+        BreakpointData() : BPenabled(0), BPwithWatchExpr(0), BPwithHitCount(0), BPwithConditionExpr(0) {}
     };
 
     bool _breakpointsAreOn{ true };                     // global status for breakpoint table (user controlled)
@@ -2552,15 +2634,16 @@ private:
     Justina::parsingResult_type addOneSourceLineRangePair(long gapLineRange, long adjacentLineRange);
 
     // maintaining breakpoints
-    Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* viewString = nullptr, long hitCount = 0, const char* triggerString = nullptr);
+    Justina::execResult_type maintainBP(long breakpointLine, char actionCmdCode, int extraAttribCount = 0, const char* watchString = nullptr, long hitCount = 0, const char* conditionString = nullptr);
     Justina::execResult_type findParsedStatementForSourceLine(long sourceLine, char*& pProgramStep);
 
     // utilities
     long BPsourceLineFromToBPlineSequence(long BPsourceLineOrIndex, bool toIndex = true);
     Justina::execResult_type progMem_getSetClearBP(long lineSequenceNum, char*& pProgramStep, bool doSet = false, bool doClear = false);
     Justina::execResult_type maintainBreakpointTable(long sourceLine, char* pProgramStep, bool doSet, bool doClear, bool doEnable, bool doDisable,
-        int extraAttribCount, const char* viewString, long hitCount, const char* triggerString);
+        int extraAttribCount, const char* watchString, long hitCount, const char* conditionString);
     BreakpointData* findBPtableRow(char* pParsedStatement, int& row);
+    Justina::execResult_type tryBPactivation();
     long findLineNumberForBPstatement(char* pProgramStepToFind);
     void  printBreakpoints();
     void printLineRangesToDebugOut(Stream* output);

@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------------------------------------------------
     Example JUSTINA language program for use with the Justina interpreter
-	
- 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
     by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
     Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
                                                                                                                          
@@ -14,36 +14,36 @@
 program startJustina; // this is a JUSTINA program
 
 /*
-	This program is an example of a 'startup' program, that will run automatically upon starting Justina.
-	This can be useful to adapt specific settings, for instance to set formatting for floating point numbers etc.
-	
-	Requirements:
-	- Justina startup options must allow autostart: add 'Justina::SD_runStart' as startup option when the Justina object is created (see user manual appendix A)
-	- An SD card board must be connected 
-	- the program file must be named 'start.jus' and must reside in the root folder of the SD card
-	- the main program function or procedure must be defined as 'start()', without parameters  
-	
-	Procedure call: start();
+    This program is an example of a 'startup' program, that will run automatically upon starting Justina.
+    This can be useful to adapt specific settings, for instance to set formatting for floating point numbers etc.
+    
+    Requirements:
+    - Justina startup options must allow autostart: add 'Justina::SD_runStart' as startup option when the Justina object is created (see user manual appendix A)
+    - An SD card board must be connected 
+    - the program file must be named 'start.jus' and must reside in the root folder of the SD card
+    - the main program function or procedure must be defined as 'start()', without parameters  
+    
+    Procedure call: start();
 */
-	
-	
+    
+    
 procedure start();
-	coutLine repeatChar("-", 59), line(), 
-		"---- Executing startup file 'start.jus' ----", line(), repeatChar("-", 59);
-	
-	coutLine "board architecture: ", 
-		choose(sysVal(44) + 1, "unknown", "SAMD", "RP2040", "ESP32");				// Arduino board architecture ?
-	coutLine ifte(isColdStart(), "Cold start", "Warm start");						
-	
-	coutLine "setting display mode and width; int and float number format";	
-	dispMode ECHO, RESULTS;															// echo user input and display calculation results
-	dispWidth 50;																	// set display width for calculation results to 30 characters		
-	floatFmt 2, FIXED;																// print floats in fixed point notation, 2 digits 
-	intFmt 1, DEC;																	// print integers in base 10, minimum 1 digit 
-	coutLine "setting angle mode to degrees";
-	angleMode DEGREES;																// set degrees as angle mode
-	
-	coutLine "test angle mode: the sine of 90 degrees is ", sin(90);				// print the sine of 90 degrees to the console								
-	coutLine repeatChar("-", 59);
+    coutLine repeatChar("-", 59), line(), 
+        "---- Executing startup file 'start.jus' ----", line(), repeatChar("-", 59);
+    
+    coutLine "board architecture: ", 
+        choose(sysVal(44) + 1, "unknown", "SAMD", "RP2040", "ESP32");               // Arduino board architecture ?
+    coutLine ifte(isColdStart(), "Cold start", "Warm start");                       
+    
+    coutLine "setting display mode and width; int and float number format"; 
+    dispMode ECHO, RESULTS;                                                         // echo user input and display calculation results
+    dispWidth 50;                                                                   // set display width for calculation results to 30 characters       
+    floatFmt 2, FIXED;                                                              // print floats in fixed point notation, 2 digits 
+    intFmt 1, DEC;                                                                  // print integers in base 10, minimum 1 digit 
+    coutLine "setting angle mode to degrees";
+    angleMode DEGREES;                                                              // set degrees as angle mode
+    
+    coutLine "test angle mode: the sine of 90 degrees is ", sin(90);                // print the sine of 90 degrees to the console                              
+    coutLine repeatChar("-", 59);
 end;
-	
+    

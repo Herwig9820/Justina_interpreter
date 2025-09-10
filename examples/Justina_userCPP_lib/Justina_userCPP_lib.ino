@@ -51,8 +51,8 @@ bool JustinaComplex::cmplxCtoP(void** const pdata, const char* const valueType, 
 // arrays with a function attributes record (alias, function, min. and max. arguments allowed) for each user c++ function defined above
 // ------------------------------------------------------------------------------------------------------------------------------------
 Justina::CppBoolFunction const cppBoolFunctions[]{                          // user functions returning boolean value (bool)
-    {"cpp_cmplxAdd", JustinaComplex::cmplxAdd, 3, 3},                       // - complex number addition                   
-    {"cpp_cmplxCtoP", JustinaComplex::cmplxCtoP, 2, 2 }                     // - Cartesian to polar coordinates                   
+    {"usrc_cmplxAdd", JustinaComplex::cmplxAdd, 3, 3},                      // - complex number addition                   
+    {"usrc_cmplxCtoP", JustinaComplex::cmplxCtoP, 2, 2 }                    // - Cartesian to polar coordinates                   
 };
 // no user c++ functions defined with these return types: 
 // OK to comment out or remove next lines 

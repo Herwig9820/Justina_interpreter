@@ -48,7 +48,7 @@ void changeAllArgValues(void** const pdata, const char* const valueType, const i
     Justina call (if function is registered as a command, as in this example):
     --------------------------------------------------------------------------
     var longVar = 123, floatVar = 123., stringVar = "123";                  // create variables
-    usrc_changeAllArgValues longVar, floatVar, stringVar;                    // command: arguments NOT enclosed in parentheses
+    usrc_changeAllArgValues longVar, floatVar, stringVar;                   // command: arguments NOT enclosed in parentheses
 */
 
     for (int i = 0; i < argCount; i++) {                                    // for each argument...

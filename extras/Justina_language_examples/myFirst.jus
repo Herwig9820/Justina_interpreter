@@ -1,7 +1,7 @@
 /*------------------------------------------------------------------------------------------------------------------------
     Example JUSTINA language program for use with the Justina interpreter
-	
- 	The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
+    
+    The Justina interpreter library is licensed under the terms of the GNU General Public License v3.0 as published      
     by the Free Software Foundation (https://www.gnu.org/licenses).                                                      
     Refer to GitHub for more information and documentation: https://github.com/Herwig9820/Justina_interpreter            
                                                                                                                          
@@ -14,20 +14,20 @@
 program myFirstProgram; // this is a JUSTINA program
 
 /*
-	Very basic example of a Justina program. It demonstrates the use of local variables 
-	and executes a simple loop, printing a line to the console at each iteration.
+    Very basic example of a Justina program. It demonstrates the use of local variables 
+    and executes a simple loop, printing a line to the console at each iteration.
 
-	Function call: print5lines();
-	Returns: 6**2 (6 is the final value of the loop control variable)
+    Function call: print5lines();
+    Returns: 6**2 (6 is the final value of the loop control variable)
 */
 
 
-function print5lines();    	// this is a function
+function print5lines();     // this is a function
 
-var i;						// this is a LOCAL variable
+var i;                      // this is a LOCAL variable
 
-for i = 1, 5;            	// this is the start of a loop
-    coutLine "line = ", i; 	// this prints something
-  end;                     	// this is the end of a loop
-  return i ** 2;           	// this returns the square of i
-end;                       	// this the end of a function
+for i = 1, 5;               // this is the start of a loop
+    coutLine "line = ", i;  // this prints something
+  end;                      // this is the end of a loop
+  return i ** 2;            // this returns the square of i
+end;                        // this the end of a function

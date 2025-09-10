@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -129,7 +129,7 @@ char* LinkedList::deleteListElement(void* pPayload) {                           
         q = q->pNext;
     }
 
-    (*_ppDebugOutStream)->print("(LIST) Delete elem # "); (*_ppDebugOutStream)->print(i); (*_ppDebugOutStream)->print(" (new # "); (*_ppDebugOutStream)->print(_listElementCount - 1);
+    (*_ppDebugOutStream)->print("(LIST) delete elem # "); (*_ppDebugOutStream)->print(i); (*_ppDebugOutStream)->print(" (new # "); (*_ppDebugOutStream)->print(_listElementCount - 1);
     (*_ppDebugOutStream)->print("), list ID "); (*_ppDebugOutStream)->print(_listID);
     (*_ppDebugOutStream)->print(", stack: "); (*_ppDebugOutStream)->print(_listName);
     (*_ppDebugOutStream)->print(", list elem address: "); (*_ppDebugOutStream)->println((uint32_t)pElem, HEX);

@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -30,15 +30,15 @@
 #define PRINT_DEBUG_INFO 0
 
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
 // --------------------------------------------------------------------------------------------------------------------
-// *   parse ONE statement in a character string, ended by an optional ';' character and a '\0' mandatory character   *
+// *   parse ONE statement in a character string, ended by an optional ';' character and a mandatory '\0' character   *
 // --------------------------------------------------------------------------------------------------------------------
 
-Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool isNewSourceLine, long sourceLine) {
+Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& pNextParseStatement, int& clearIndicator, bool& isSilentOnOffStatement) {
     _lastTokenType_hold = tok_no_token;
     _lastTokenType = tok_no_token;                                                      // no token yet
 
@@ -67,6 +67,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
     _isCommand = false;
 
+    isSilentOnOffStatement = false;
+
     int commandIndex{};
     bool isInternalCommand{};
 
@@ -89,7 +91,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
         if ((_lastTokenType == tok_no_token) || isSemicolon) {
             _isProgramCmd = false;
-            _isJustinaFunctionCmd = false; _isVoidJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;;
+            _isJustinaFunctionCmd = false; _isVoidJustinaFunctionCmd = false; _isGlobalOrUserVarCmd = false; _isLocalVarCmd = false; _isStaticVarCmd = false; _isAnyVarCmd = false, _isConstVarCmd = false;
             _isForCommand = false;
             _isDeleteVarCmd = false;
             _isClearProgCmd = false;
@@ -114,8 +116,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
         while (pNext[0] == ' ') { pNext++; }                                                                        // skip leading spaces
         if (pNext[0] == '\0') { pNextParseStatement = pNext; break; }                                               // end of statement: prepare to quit parsing  
 
-        // trace, BP view or BP trigger string ? parse one statement at a time, then execute it first (note: within BP trigger strings, only the first expression will be parsed and executed)
-        if ((_parsingExecutingTraceString || _parsingExecutingTriggerString) && isSemicolon) { pNextParseStatement = pNext;  break; }
+        // watch, BP watch or BP condition string ? parse one statement at a time, then execute it first (note: within BP condition strings, only the first expression will be parsed and executed)
+        if ((_parsingExecutingWatchString || _parsingExecutingConditionString) && isSemicolon) { pNextParseStatement = pNext;  break; }
 
 
         _lastTokenType_hold = _lastTokenType;                                                                       // remember the last parsed token during parsing of a next token
@@ -162,7 +164,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
             if (_isCommand) {
                 isInternalCommand = (_lastTokenType == tok_isInternCommand);                                        // remember during parsing of this statement
                 commandIndex = _tokenIndex;
-                if (!checkCommandKeyword(result, commandIndex, isInternalCommand)) { ; pNext = pNext_hold; break; }
+                if (!checkCommandKeyword(result, commandIndex, isInternalCommand, isSilentOnOffStatement)) { ; pNext = pNext_hold; break; }
             }
         }
 
@@ -177,6 +179,8 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 
     if (_userVarUnderConstruction) { deleteUserVariable(); }
 
+    if (result != result_parsing_OK) { isSilentOnOffStatement = false; }
+
     return result;
 }
 
@@ -185,7 +189,7 @@ Justina::parsingResult_type Justina::parseStatement(char*& pInputStart, char*& p
 // *   Start of a command only: apply additional command syntax rules   *
 // ----------------------------------------------------------------------
 
-bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal) {           // command syntax checks
+bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, bool commandIsInternal, bool& isSilentKeyword) {   // command syntax checks
 
 #if PRINT_PARSED_TOKENS
     _pDebugOut->println("   checking command keyword");
@@ -230,6 +234,8 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
         _isClearAllCmd = _internCommands[commandIndex].commandCode == cmdcod_clearAll;
 
         _isAnyVarCmd = _isGlobalOrUserVarCmd || _isLocalVarCmd || _isStaticVarCmd;                                  //  var, local, static
+
+        isSilentKeyword = _internCommands[commandIndex].commandCode == cmdcod_silent;
     }
 
     // is this command allowed here ? Check restrictions
@@ -241,14 +247,24 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     // external (user cpp) commands: check if specified usage restriction is valid
     // note: external commands are always executable (not 'parsing only')
     if (!commandIsInternal && (cmdRestriction != cmd_noRestrictions) && (cmdRestriction != cmd_onlyInFunctionBlock)
-        && (cmdRestriction != cmd_onlyImmediate) && (cmdRestriction != cmd_onlyImmOrInsideFuncBlock)) {
+        && (cmdRestriction != cmd_onlyImmediate) && (cmdRestriction != cmd_onlyCommandLine) && (cmdRestriction != cmd_onlyInBatchFile) && (cmdRestriction != cmd_onlyImmOrInsideFuncBlock)) {
         result = result_cmd_usageRestrictionNotValid; return false;
     }
 
+    int statementInputStreamNumber = _activeFunctionData.statementInputStream;              // note: if > 0, then either program file being parsed or batch file being executed
+    bool isBatchFileInput = (!_programMode && (statementInputStreamNumber > 0));
+    bool isCommandLineInput = (!_programMode && (statementInputStreamNumber == 0));         // (commands do not appear in watch strings, breakpoint condition and watch strings)
+
     if ((cmdRestriction == cmd_onlyProgramTop) && (_lastTokenStep != 0)) { result = result_cmd_onlyProgramStart; return false; }        // not a 'program' command
     if ((cmdRestriction != cmd_onlyProgramTop) && (_lastTokenStep == 0)) { result = result_cmd_programCmdMissing; return false; }
-    if ((cmdRestriction == cmd_onlyImmModeTop) && (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE + sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2))) { result = result_cmd_onlyImmModeFirstStatement; return false; }
+    if ((cmdRestriction == cmd_onlyCommandLineStart) && (isBatchFileInput || (_programCounter != _programStorage + _PROGRAM_MEMORY_SIZE +
+        sizeof(Token_internalCommand) - (hasTokenStep ? 0 : 2)))) {
+        result = result_cmd_onlyCommandLineStart; return false;
+    }
+
     if (_programMode && (cmdRestriction == cmd_onlyImmediate)) { result = result_cmd_onlyImmediateMode; return false; }
+    if ((_programMode || isBatchFileInput) && (cmdRestriction == cmd_onlyCommandLine)) { result = result_cmd_onlyCommandLine; return false; }
+    if ((_programMode || isCommandLineInput) && (cmdRestriction == cmd_onlyInBatchFile)) { result = result_cmd_onlyInBatchFile; return false; }
     if (!_programMode && (cmdRestriction == cmd_onlyInProgram)) { result = result_cmd_onlyInsideProgram; return false; }
     if (!_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyInFunctionBlock)) { result = result_cmd_onlyInsideFunction; return false; }
     if (_justinaFunctionBlockOpen && (cmdRestriction == cmd_onlyOutsideFunctionBlock)) { result = result_cmd_onlyOutsideFunction; return false; }
@@ -257,12 +273,17 @@ bool Justina::checkCommandKeyword(parsingResult_type& result, int commandIndex, 
     if ((_programMode || (_blockLevel > 0)) && (cmdRestriction == cmd_onlyImmediateNotWithinBlock)) { result = result_cmd_onlyImmediateNotWithinBlock; return false; }
     if (_justinaFunctionBlockOpen && _isJustinaFunctionCmd) { result = result_function_defsCannotBeNested; return false; }       // separate message to indicate 'no nesting'
 
-   // not a block command: nothing more to do here 
-    if (cmdBlockDef.blockType == block_none) { return true; }                                                       // (always for external commands) 
+    // command is allowed while (not) in debug mode ?
+    // this can be tested during parsing, because these commands are allowed in imm. mode only (command line and/or batch file line) 
+    if ((_internCommands[commandIndex].usageRestrictions & cmd_notInDebugMode) && (_openDebugLevels > 0)) { result = result_cmd_notAllowedInDebugMode;  return false; }
+    if ((_internCommands[commandIndex].usageRestrictions & cmd_onlyInDebugMode) && (_openDebugLevels == 0)) { result = result_cmd_onlyInDebugMode;  return false; }
 
 
     // perform specific checks related to block commands
     // -------------------------------------------------
+
+    // not a block command: nothing more to do here 
+    if (cmdBlockDef.blockType == block_none) { return true; }                                                       // (always for external commands) 
 
     if (cmdBlockDef.blockPosOrAction == block_startPos) {                                                           // is a block start command ?                          
         _blockLevel++;                                                                                              // increment stack counter and create corresponding list element
@@ -414,8 +435,12 @@ bool Justina::checkCommandArgToken(parsingResult_type& result, int& clearIndicat
 
     if (isSemiColonSep) {                                                                                           // semicolon: end of command                                                    
         // NOTE: clear program / memory command will be executed when normal execution ends (before entering idle mode, waiting for input)
-        if (_isClearProgCmd) { clearIndicator = 1; }                                                                // clear program: set flag 
-        else if (_isClearAllCmd) { clearIndicator = 2; }                                                            // clear all: set flag
+        if (_isClearProgCmd) {
+            clearIndicator = 1;                                                                                     // clear program: set flag 
+        }
+        else if (_isClearAllCmd) {
+            clearIndicator = 2;                                                                                     // clear all: set flag
+        }
         return true;                                                                                                // nothing more to do for this command
     }
 
@@ -460,9 +485,9 @@ bool Justina::parseAsInternCommand(char*& pNext, parsingResult_type& result) {
         if (strlen(_internCommands[commandIndex]._commandName) != pNext - pch) { continue; }                    // token has correct length ? If not, skip remainder of loop ('continue')                            
         if (strncmp(_internCommands[commandIndex]._commandName, pch, pNext - pch) != 0) { continue; }           // token corresponds to keyword ? If not, skip remainder of loop ('continue') 
 
-        // commands (starting with a keyword) are not allowed within trace, BP view, BP trigger strings and in eval() strings.
+        // commands (starting with a keyword) are not allowed within watch, BP watch, BP condition strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_commandNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_commandNotAllowed; return false; }
 
         if (_parenthesisLevel > 0) { pNext = pch; result = result_commandNotAllowedHere; return false; }
 
@@ -540,9 +565,9 @@ bool Justina::parseAsExternCommand(char*& pNext, parsingResult_type& result) {
 
         if (pNext - pch > MAX_IDENT_NAME_LEN) { pNext = pch; result = result_identifierTooLong;  return false; }   // function name is too long
 
-        // commands are not allowed within trace, BP view, BP trigger strings and in eval() strings.
+        // commands are not allowed within watch, BP watch, BP condition strings and in eval() strings.
         // if not allowed, reset pointer to first character to parse, indicate error and return
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_commandNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_commandNotAllowed; return false; }
 
         if (_parenthesisLevel > 0) { pNext = pch; result = result_commandNotAllowedHere; return false; }
 
@@ -736,7 +761,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
     } while (false);
 
     if (result != result_tokenNotFound) {
-        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? Delete the string object
+        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? delete the string object
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
             _pDebugOut->print("  parse str cst (1) ");   _pDebugOut->println(pStringCst);
@@ -777,7 +802,7 @@ bool Justina::parseAsStringConstant(char*& pNext, parsingResult_type& result) {
     }
 
     if (result == result_arrayDef_emptyInitStringExpected) {
-        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? Delete the string object
+        if (predefinedConstIndex == -1) {                       // an ordinary (not a symbolic) parsed string constant ? delete the string object
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n----- (parsed str ) ");   _pDebugOut->println((uint32_t)pStringCst, HEX);
             _pDebugOut->print("  parse str cst (2) ");   _pDebugOut->println(pStringCst);
@@ -1518,10 +1543,10 @@ bool Justina::parseAsInternCPPfunction(char*& pNext, parsingResult_type& result)
         if (_isAnyVarCmd) { pNext = pch; result = result_variableNameExpected; return false; }          // is a variable declaration: cpp function name not allowed
         if (_isDeleteVarCmd) { pNext = pch; result = result_variableNameExpected; return false; }
 
-        // eval() function can not occur within a trace, BP view or BP trigger string (all other internal functions can)
+        // eval() function can not occur within a watch, BP watch or BP condition string (all other internal functions can)
         // note: an eval() functions are allowed in other eval() function
-        if (_parsingExecutingTraceString || _parsingExecutingTriggerString) {
-            if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_trace_evalFunctonNotAllowed; return false; }
+        if (_parsingExecutingWatchString || _parsingExecutingConditionString) {
+            if (_internCppFunctions[funcIndex].functionCode == fnccod_eval) { pNext = pch; result = result_watch_evalFunctonNotAllowed; return false; }
         }
 
         // token is an internal cpp function, and it's allowed here
@@ -1664,8 +1689,8 @@ bool Justina::parseAsJustinaFunction(char*& pNext, parsingResult_type& result) {
     index = getIdentifier(userVarNames, _userVarCount, MAX_USERVARNAMES, pch, pNext - pch, createNewName, true);
     if (index != -1) { pNext = pch; return true; }                                                                      // is a user variable
 
-    // user functions cannot occur within a trace, BP view or BP trigger string (they are allowed in eval() strings, however)
-    if (_parsingExecutingTraceString || _parsingExecutingTriggerString) { pNext = pch; result = result_trace_userFunctonNotAllowed; return false; }
+    // user functions cannot occur within a watch, BP watch or BP condition string (they are allowed in eval() strings, however)
+    if (_parsingExecutingWatchString || _parsingExecutingConditionString) { pNext = pch; result = result_watch_userFunctonNotAllowed; return false; }
 
     if ((_isJustinaFunctionCmd) && (_parenthesisLevel > 0)) { pNext = pch; return true; }                               // only array parameter allowed now
 
@@ -2111,12 +2136,12 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                 // retrieve data about this function now.
 
                  // in debug mode (program stopped), the name could refer to a local or static variable within the currently stopped function (open function).
-                 // if parsing a BP trigger string, debug mode is not active yet (function is not stopped yet- will depend of trigger string execution result)   
+                 // if parsing a BP condition string, debug mode is not active yet (function is not stopped yet - will depend on condition string execution result)   
 
-                if ((_openDebugLevels > 0) || _parsingExecutingTriggerString) {
+                if ((_openDebugLevels > 0) || _parsingExecutingConditionString) {
                     void* pFlowCtrlStackLvl{};
-                    if (_parsingExecutingTriggerString) {
-                        pFlowCtrlStackLvl = &_activeFunctionData;                        // program not yet stopped: function data reside in _activeFunctionData
+                    if (_parsingExecutingConditionString) {
+                        pFlowCtrlStackLvl = &_activeFunctionData;      // program not yet stopped: function data reside in _activeFunctionData
                     }
                     else {
 
@@ -2133,7 +2158,7 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
                         bool isDebugCmdLevel = (blockType == block_JustinaFunction) ? (_activeFunctionData.pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
                         if (!isDebugCmdLevel) {                                                                         // find debug level in flow control stack instead
                             do {
-                                blockType = ((openBlockGeneric*)pFlowCtrlStackLvl)->blockType;
+                                blockType = ((OpenBlockGeneric*)pFlowCtrlStackLvl)->blockType;
                                 isDebugCmdLevel = (blockType == block_JustinaFunction) ? (((OpenFunctionData*)pFlowCtrlStackLvl)->pNextStep >= (_programStorage + _PROGRAM_MEMORY_SIZE)) : false;
                                 pFlowCtrlStackLvl = flowCtrlStack.getPrevListElement(pFlowCtrlStackLvl);
                             } while (!isDebugCmdLevel);                                                                 // stack level for open function found immediate below debug line found (always match)
@@ -2349,9 +2374,9 @@ bool Justina::parseAsVariable(char*& pNext, parsingResult_type& result) {
     pToken->tokenType = tok_isVariable | (sizeof(Token_variable) << 4);
     // identInfo only contains variable scope info (parameter, local, static, global), 'is array' flag, is constant var flag, and 'is forced function variable in debug mode' flag (for printing only) 
     pToken->identInfo = varScope | (isArray ? var_isArray : 0) | (varIsConstantVar ? var_isConstantVar : 0) |
-        (debug_functionVarOnly ? var_isForcedFunctionVar : 0);                                     // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
+        (debug_functionVarOnly ? var_isForcedFunctionVar : 0);                                  // qualifier, array flag ? (is fixed for a variable -> can be stored in token)  
     pToken->identNameIndex = varNameIndex;
-    pToken->identValueIndex = valueIndex;                                                          // points to storage area element for the variable  
+    pToken->identValueIndex = valueIndex;                                                       // points to storage area element for the variable  
 
 
     _lastTokenStep = _programCounter - _programStorage;
@@ -2385,9 +2410,9 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
     if (!isalpha(pNext[0]) && (pNext[0] != '#')) { return true; }                               // first character is not a letter ? Then it's not an identifier name (it can still be something else)
     while (isalnum(pNext[0]) || (pNext[0] == '_')) { pNext++; }                                 // do until first character after alphanumeric token (can be anything, including '\0')
 
-    // generic identifiers cannot occur within a trace, BP view or BP trigger string, and not within an eval() string
+    // generic identifiers cannot occur within a watch, BP watch or BP condition string, and not within an eval() string
     // if not allowed here, reset pointer to first character to parse, indicate error and return
-    if (_parsingExecutingTraceString || _parsingExecutingTriggerString || _parsingEvalString) { pNext = pch; result = result_trace_eval_genericNameNotAllowed; return false; }
+    if (_parsingExecutingWatchString || _parsingExecutingConditionString || _parsingEvalString) { pNext = pch; result = result_watch_eval_genericNameNotAllowed; return false; }
 
     if (_parenthesisLevel > 0) { pNext = pch; result = result_identifierNotAllowedHere; return false; }
     if (_isDeleteVarCmd) {        // delete variable: previous token can only be a command ("delete") or a comma (token group one)
@@ -2413,8 +2438,11 @@ bool Justina::parseAsIdentifierName(char*& pNext, parsingResult_type& result) {
         strcpy(_programName, pIdentifierName);
     }
 
-    else if (_isDeleteVarCmd) {
-        // NOTE: deletion of user variables NEEDS to be done during parsing (before execution starts)  to keep system consistency, because variable creation also occurs during parsing
+    else if (_isDeleteVarCmd) {                                                                 // delete specified user variables
+        // Deleting user variables is only possible in immediate mode (command line or batch file).
+        // If a line contains multiple statements, the line must start with the 'delete' statement.  
+        // Deletion of user variables is done when the "delete" statement is PARSED.  
+        // This is necessary to maintain system consistency, because variable creation also occurs during parsing.
 
         char* p = pNext;
         while (p[0] == ' ') { p++; }                                                            // find first non-space character
@@ -2891,6 +2919,8 @@ bool Justina::initVariable(uint16_t varTokenStep, uint16_t constTokenStep) {
 // ------------------------------
 // *   delete a user variable   *
 // ------------------------------
+
+// Deletion of user variables is done at the time the "delete" statement is PARSED (immediate mode only).  
 
 Justina::parsingResult_type Justina::deleteUserVariable(char* userVarName) {
 

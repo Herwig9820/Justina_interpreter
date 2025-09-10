@@ -14,18 +14,18 @@
 
 /*
     Example code demonstrating the use of Justina system callbacks
-	--------------------------------------------------------------
-	The purpose of system callbacks (executed in the background, multiple times per second), is to
-    - ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP         
-      connection, etc.) continue to be executed while control is within Justina                            
-    - detect stop, abort, console reset and kill requests, e.g., to request aborting a running             
-      Justina program stuck in an endless loop, when a user presses a pushbutton wired to an input pin                             
-    - retrieve the Justina interpreter state (idle, parsing, executing, stopped in      
-      debug mode, error), for instance to blink a led or produce a beep when a user error is made      
-    without the need for Justina to have any knowledge about the hardware (pins, ...) and without using timer interrupts.                 
+    --------------------------------------------------------------
+    The purpose of system callbacks (executed in the background, multiple times per second), is to
+    - ensure that procedures that need to be executed at regular intervals (e.g. maintaining a TCP
+      connection, etc.) continue to be executed while control is within Justina
+    - detect stop, abort, console reset and kill requests, e.g., to request aborting a running
+      Justina program stuck in an endless loop, when a user presses a pushbutton wired to an input pin
+    - retrieve the Justina interpreter state (idle, parsing, executing, stopped in
+      debug mode, error), for instance to blink a led or produce a beep when a user error is made
+    without the need for Justina to have any knowledge about the hardware (pins, ...) and without using timer interrupts.
 
     This sketch demonstrates the use of system callbacks to blink a heartbeat led; detect stop, abort,
-    console reset and kill requests and switch indicator leds displaying the current Justina status ON or OFF. 
+    console reset and kill requests and switch indicator leds displaying the current Justina status ON or OFF.
 
     MORE INFORMATION: see Justina USER MANUAL, available on GitHub
 */
@@ -38,7 +38,7 @@ constexpr int STOP_ABORT_PIN{ 4 };                                          // r
 // output pins: connect each output pin to the anode of a LED and connect each cathode to one terminal of a resistor. Wire the other terminal to ground. 
 constexpr int DATA_IO_PIN{ 5 };                                             // signals Justina is sending or receiving data (from any external IO device) 
 constexpr int STATUS_A_PIN{ 6 };                                            // status A and B: Justina status
-constexpr int STATUS_B_PIN{ 7 };
+constexpr int STATUS_B_PIN{ 7 }; 
 constexpr int ERROR_PIN{ 8 };                                               // a Justina error occurred (e.g., division by zero)  
 constexpr int HEARTBEAT_PIN{ 9 };                                           // a square wave is output to indicate 'Justina is running'                                                
 
@@ -57,18 +57,30 @@ void heartbeat();
 
 void setup() {
     Serial.begin(115200);
-    delay(5000);
+
+    delay(2000);
 
     // connect a pushbutton to pin STOP_ABORT_PIN and a pushbutton to pin CONS_KILL_PIN; connect the other pin of the pushbuttons to ground
     // each button recognizes a short and a long key press (> 1500 ms), so in total we have 4 actions (stop, abort, reset console, kill) 
     pinMode(STOP_ABORT_PIN, INPUT_PULLUP);
     pinMode(CONS_KILL_PIN, INPUT_PULLUP);
 
-    pinMode(HEARTBEAT_PIN, OUTPUT); digitalWrite(HEARTBEAT_PIN, LOW);       // blinks faster while Justina is running, slower while not in Justina
-    pinMode(STATUS_A_PIN, OUTPUT); digitalWrite(STATUS_A_PIN, LOW);         // status A & status B leds OFF: Justina is idle, status A led ON, B led OFF: parsing, ... 
-    pinMode(STATUS_B_PIN, OUTPUT); digitalWrite(STATUS_B_PIN, LOW);         // ...status A led OFF, led B ON: executing, both leds ON: stopped (idle) in debug mode
-    pinMode(ERROR_PIN, OUTPUT); digitalWrite(ERROR_PIN, LOW);               // ON when a user error occurs (e.g., division by zero)
-    pinMode(DATA_IO_PIN, OUTPUT); digitalWrite(DATA_IO_PIN, LOW);           // ON when bytes are sent or received to/from an IO device (this sketch: Serial)
+    pinMode(HEARTBEAT_PIN, OUTPUT);     // blinks faster while Justina is running, slower while not in Justina
+    pinMode(STATUS_A_PIN, OUTPUT);      // status A & status B leds OFF: Justina is idle, status A led ON, B led OFF: parsing, ...
+    pinMode(STATUS_B_PIN, OUTPUT);      // ...status A led OFF, led B ON: executing, both leds ON: stopped (idle) in debug mode
+    pinMode(ERROR_PIN, OUTPUT);         // ON when a user error occurs (e.g., division by zero)
+    pinMode(DATA_IO_PIN, OUTPUT);       // ON when bytes are sent or received to/from an IO device (this sketch: Serial)
+
+    bool lampTest = false;              // delay 4 seconds to give Serial time to start; in the mean time 2 seconds LED test
+    do {
+        delay(2500);
+        lampTest = !lampTest;
+        digitalWrite(HEARTBEAT_PIN, lampTest);
+        digitalWrite(STATUS_A_PIN, lampTest);
+        digitalWrite(STATUS_B_PIN, lampTest);
+        digitalWrite(ERROR_PIN, lampTest);
+        digitalWrite(DATA_IO_PIN, lampTest);
+    } while (lampTest);
 
     justina.setSystemCallbackFunction(&Justina_housekeeping);               // set callback function; it will be called regularly while control is within Justina 
 
@@ -193,7 +205,7 @@ void Justina_housekeeping(long& appFlags) {
     // (you would add calls to other methods requiring execution at regular intervals here)
     // ...
 
-    
+
     // 2. detect stop, abort, console reset and kill requests and submit to Justina   
     // ----------------------------------------------------------------------------
     static bool errorCondition = false, statusA = false, statusB = false, dataInOut = false;

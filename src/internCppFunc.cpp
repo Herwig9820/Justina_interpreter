@@ -1,7 +1,7 @@
 /***********************************************************************************************************
 *   Justina interpreter library                                                                            *
 *                                                                                                          *
-*   Copyright 2024, 2025 Herwig Taveirne                                                                        *
+*   Copyright 2024, 2025 Herwig Taveirne                                                                   *
 *                                                                                                          *
 *   This file is part of the Justina Interpreter library.                                                  *
 *   The Justina interpreter library is free software: you can redistribute it and/or modify it under       *
@@ -28,9 +28,9 @@
 #define PRINT_HEAP_OBJ_CREA_DEL 0
 
 
-// *****************************************************************
+// *****************************************************
 // ***        class Justina - implementation         ***
-// *****************************************************************
+// *****************************************************
 
 
 // -------------------------------------
@@ -41,7 +41,7 @@
 // during parsing, preliminary checks have been done already: minimum, maximum number of arguments allowed for the function and, for each argument supplied, whether a single value or an array is expected as argument
 // the expression list as a whole is put between parentheses (in contrast to command arguments)
 
-Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedStopRequest, bool& forcedAbortRequest) {
+Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFunctionStackLvl, LE_evalStack*& pFirstArgStackLvl, int suppliedArgCount, bool& forcedAbortRequest) {
 
     // this procedure is called when the closing parenthesis of an internal Justina function is encountered.
     // all internal Justina functions use the same standard mechanism (with exception of the eval() function):
@@ -128,7 +128,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             // open file and retrieve file number
             execResult_type execResult = SD_open(newFileNumber, args[0].pStringConst, mode);
-            if (execResult != result_execOK) { return execResult; }
+            if (execResult != result_exec_OK) { return execResult; }
 
             // save file number as result
             fcnResultValueType = value_isLong;
@@ -141,7 +141,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         // SD card: test if file exists, create or remove directory, remove file
         // ---------------------------------------------------------------------
 
-        case fnccod_exists:                                                                                                 // does file of directory exist ?
+        case fnccod_exists:                                                                                                 // does file or directory exist ?
         case fnccod_mkdir:                                                                                                  // create directory
         case fnccod_rmdir:                                                                                                  // remove directory
         case fnccod_remove:                                                                                                 // remove file
@@ -152,7 +152,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if (!_SDinitOK) { return result_SD_noCardOrCardError; }
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }                                      // file path
             char* filePath = args[0].pStringConst;
-            if (!pathValid(filePath)) { return result_SD_pathIsNotValid; }                                                  // is not a complete check, but it remedies a few flaws in SD library
+            execResult_type execResult = pathValid(filePath);
+            if (execResult != result_exec_OK) { return execResult; }                                           // is not a complete check, but it remedies a few flaws in SD library
 
             fcnResultValueType = value_isLong;                                                                              // init
 
@@ -226,8 +227,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // check directory file number (also perform related file and SD card object checks)
             File* pFile{};
             int allowedFileTypes = (functionCode == fnccod_isDirectory) ? 0 : 2;                                            // 0: all file types allowed, 1: files only, 2: directories only
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, allowedFileTypes);
-            if (execResult != result_execOK) { return execResult; }
+            bool allowSystemFiles = (functionCode == fnccod_isDirectory);                                                   // allow system files only for isDirectory() function
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, allowedFileTypes, allowSystemFiles);
+            if (execResult != result_exec_OK) { return execResult; }
 
             // access mode (openNextFile only)
             long mode = READ_FILE;                                                                                          // init: open for reading
@@ -252,25 +254,27 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 int dirFileNumber = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst) : (args[0].floatConst);              // cast directory file number to integer
                 int newFileNumber{ 0 };
                 execResult_type execResult = SD_openNext(dirFileNumber, newFileNumber, pFile, mode);                        // file could be open already: to be safe, open in read only mode here
-                if (execResult != result_execOK) { return execResult; }
+                if (execResult != result_exec_OK) { return execResult; }
                 fcnResult.longConst = newFileNumber;
             }
         }
         break;
 
 
-        // --------------------------------------------------
-        // SD card: close or flush file / stream (flush only)
-        // --------------------------------------------------
+        // -------------------------------------
+        // SD card: close or flush file / stream
+        // -------------------------------------
 
         case fnccod_close:                                                                                                  // close a file
         case fnccod_flush:                                                                                                  // empty output buffer
         {
+            // flush(): stream is output stream; not for directories
+
             Stream* pStream{};
-            int streamNumber;
-            // flush(): stream is output stream; not for directories )
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1);
-            if (execResult != result_execOK) { return execResult; }
+            int streamNumber{};
+            // perform checks and return stream (file)
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true, (functionCode == fnccod_close) ? 0 : 1, false);
+            if (execResult != result_exec_OK) { return execResult; }
             if (functionCode == fnccod_close) {
                 if (streamNumber <= 0) { return result_SD_invalidFileNumber; }
                 SD_closeFile(streamNumber);
@@ -283,33 +287,33 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // ----------------------------
-        // SD card: close or flush file
-        // ----------------------------
+        // ----------------------------------------------------
+        // SD card: close or flush file (only NON-SYSTEM files)
+        // ----------------------------------------------------
 
         case fnccod_closeAll:
         {
-            SD_closeAllFiles();
+            SD_closeAllFiles(false);                                                                                        // do NOT close system files
             fcnResultValueType = value_isLong;
             fcnResult.longConst = 0;
         }
         break;
 
 
-        // ---------------------------------------------------
-        // SD: check if a file for a given file number is open
-        // ---------------------------------------------------
+        // ----------------------------------------------------------------------------------
+        // SD: check if a file for a given file number is open and whether it's a system file
+        // ----------------------------------------------------------------------------------
 
-        case fnccod_hasOpenFile:
+        case fnccod_slotHasOpenFile:
         {
             File* pFile{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // file number (all file types)
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // file number (all file types, system files)
             // do not produce error if file is not open; all other errors result in error being reported
-            if ((execResult != result_execOK) && (execResult != result_SD_fileIsNotOpen)) { return execResult; }            // error
+            if ((execResult != result_exec_OK) && (execResult != result_SD_fileIsNotOpen) && (execResult != result_SD_isOpenSystemFile)) { return execResult; }  // error
 
             // save result
             fcnResultValueType = value_isLong;
-            fcnResult.longConst = (execResult == result_execOK);   // 0 (not open) or 1 (open)
+            fcnResult.longConst = (execResult == result_SD_fileIsNotOpen) ? 0 : (execResult == result_exec_OK) ? 1 : 2;     // 0 (file not open), 1 (user file open) or 2 (system file open)
         }
         break;
 
@@ -328,13 +332,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             if ((functionCode != fnccod_available) || (suppliedArgCount > 0)) {
                 // perform checks and set pointer to IO stream or file
-                execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // stream for input (required for available() function)
-                if (execResult != result_execOK) { return execResult; }
+                // perform checks and return stream for input (required for available() function)
+                execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, false, 1, true);
+                if (execResult != result_exec_OK) { return execResult; }
                 if ((streamNumber <= 0) && (functionCode != fnccod_available)) { return result_SD_invalidFileNumber; }      // because a file number expected here
             }
 
             // retrieve and return value
-            int val{};
+            long val{};
             if (functionCode == fnccod_position) { val = (static_cast<File*>(pStream))->position(); }                       // SD file only
             else if (functionCode == fnccod_size) { val = (static_cast<File*>(pStream))->size(); }                          // SD file only
             else { val = pStream->available(); }                                                                            // can be I/O stream as well
@@ -360,10 +365,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int streamNumber{ 0 };
 
             fcnResultValueType = value_isLong;
-
-            // perform checks and set pointer to IO stream or file
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // stream for input 
-            if (execResult != result_execOK) { return execResult; }
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);     // perform checks and return stream for input 
+            if (execResult != result_exec_OK) { return execResult; }
 
             // check second argument: timeout in milliseconds (set time out only)
             if (functionCode == fnccod_setTimeout) {
@@ -388,8 +391,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             // check file number (also perform related file and SD card object checks)
             File* pFile{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile);                   // do not allow file type 'directory'
-            if (execResult != result_execOK) { return execResult; }
+            // perform file checks and return stream (file) - do not allow file type 'directory'
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile);
+            if (execResult != result_exec_OK) { return execResult; }
 
             // check second argument: position in file to seek 
             if ((!(argIsLongBits & (0x1 << 1))) && (!(argIsFloatBits & (0x1 << 1)))) { return result_arg_numberExpected; }  // number of bytes to read
@@ -418,8 +422,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             // check file number (also perform related file and SD card object checks)
             File* pFile{};
-            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0);                // all file types
-            if (execResult != result_execOK) { return execResult; }
+            execResult_type execResult = SD_fileChecks(argIsLongBits, argIsFloatBits, args[0], 0, pFile, 0, true);          // perform file checks and return stream (file) - allow system files
+            if (execResult != result_exec_OK) { return execResult; }
 
             int fileNumber = (argIsLongBits & (0x1 << 0)) ? (args[0].longConst) : (args[0].floatConst);
 
@@ -453,8 +457,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // availableForWrite(stream number) returns the number of bytes available for write
             Stream* pStream{  };
             int streamNumber{  };
-            execResult_type execResult = determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true);
-            if (execResult != result_execOK) { return execResult; }
+            execResult_type execResult = returnStreamRef(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber, true);   // perform checks and return output stream
+            if (execResult != result_exec_OK) { return execResult; }
 
             fcnResultValueType = value_isLong;
             if (functionCode == fnccod_getWriteError) { fcnResult.longConst = pStream->getWriteError(); }
@@ -476,22 +480,24 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // cin()                    NOTE: form 2: cin([terminator character, ] length) ==> see next
             // read(stream number)      NOTE: form 2: read(stream number, [terminator character, ] length) => see next 
 
-            // cin(), peek( [stream number] ),  read(stream number) functions return an ASCII code (0xff indicates no character has been received) and do NOT time out
+            // cin(), peek( [stream number] ),  read(stream number) functions return an ASCII code (0xff indicates no character has been received) and do NOT wait for time out
             // cin() is equivalent to read(CONSOLE)
 
             bool stayHere = (functionCode == fnccod_peek) ? true : (suppliedArgCount < ((functionCode == fnccod_cin) ? 1 : 2));
             if (stayHere) {
-                Stream* pStream{ _pConsoleIn };                                                                             // init
+                Stream* pStream{ _pConsoleIn };                                                 // init
                 int streamNumber{ 0 };
-                // note: available() and peek() are only available as methods of a stream: determineStream(...) returns that stream, whereas setStream(...) sets _pStreamIn and _pStreamOut...
-                // ... for use with Justina methods
-                execResult_type execResult = (functionCode == fnccod_cin) ? determineStream(streamNumber, pStream) : determineStream(argIsLongBits, argIsFloatBits, args[0], 0, pStream, streamNumber);
-                if (execResult != result_execOK) { return execResult; }
+
+                // note: commands cin and read use read() method, which uses internal stream variables _pStreamIn and _pStreamOut set by setActiveStreamTo(). 
+                //       peek() and available() methods below use local variable pStream, which is returned by returnStreamRef() as well as setActiveStreamTo().
+                execResult_type execResult = (functionCode == fnccod_cin) ? setActiveStreamTo(streamNumber, pStream) :
+                    setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber, pStream);     // perform checks and set input stream
+                if (execResult != result_exec_OK) { return execResult; }
 
                 // read character from stream now 
-                char c{ 0xff };                                                                                             // init: no character read
+                char c{ 0xff };                                                                 // init: no character read
                 if (functionCode == fnccod_peek) { c = pStream->peek(); }
-                else if (pStream->available()) { _streamNumberIn = streamNumber; _pStreamIn = pStream; c = read(); }        // set global variables 
+                else if (pStream->available()) { c = read(); }                                  // set global variables before reading 
 
                 // save result
                 fcnResultValueType = value_isLong;
@@ -525,16 +531,17 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             // perform checks and set pointer to IO stream or file
             int streamNumber{ 0 };
-            execResult_type execResult{ result_execOK };
+            execResult_type execResult{ result_exec_OK };
 
             bool streamArgPresent = ((functionCode == fnccod_read) || (functionCode == fnccod_readLine));
             bool isLineForm = ((functionCode == fnccod_cinLine) || (functionCode == fnccod_readLine));
             bool terminatorArgPresent = (!isLineForm) && (suppliedArgCount == ((functionCode == fnccod_cin) ? 2 : 3));
 
-            execResult = streamArgPresent ? setStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) : setStream(streamNumber);   // stream for input 
-            if (execResult != result_execOK) { return execResult; }
+            execResult = streamArgPresent ? setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
+                setActiveStreamTo(streamNumber);                                                                            // perform checks and set input stream 
+            if (execResult != result_exec_OK) { return execResult; }
 
-            // check terminator charachter: first character in char * 
+            // check terminator character: first character in char * 
             char terminator{ 0xff };                                                                                        // init: no terminator
             if (isLineForm) { terminator = '\n'; }
             else if (terminatorArgPresent) {                                                                                // terminator argument supplied ?
@@ -547,7 +554,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // limit string length, because object for it is created on the heap
             int maxLineLength = MAX_ALPHA_CONST_LEN - 1;        // init: input line -> length is not specified, line terminator '('\n') will be added at the end
             // input & read: check length
-            if (!isLineForm) {     // last argument pecifies maximum length
+            if (!isLineForm) {     // last argument specifies maximum length
                 int lengthArgIndex = suppliedArgCount - 1;            // base 0
                 if ((!(argIsLongBits & (0x1 << lengthArgIndex))) && (!(argIsFloatBits & (0x1 << lengthArgIndex)))) { return result_arg_numberExpected; }   // number of bytes to read
                 maxLineLength = (argIsLongBits & (0x1 << lengthArgIndex)) ? (args[lengthArgIndex].longConst) : (args[lengthArgIndex].floatConst);
@@ -569,15 +576,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             int charsRead{ 0 };                                                                                             // init
             if ((streamNumber > 0) && (terminator == 0xff)) {                                                               // reading from file and NOT searching for a terminator: read all bytes at once
-                charsRead = read(buffer, maxLineLength);                                                                    // if fewer bytes available, end reading WITHOUT time out; read() uses stream set by 'setStream()'
+                charsRead = read(buffer, maxLineLength);                                                                    // if fewer bytes available, end reading WITHOUT time out; read() uses stream set by 'setActiveStreamTo()'
             }
             else {                                                                                                          // external input OR (all streams) search for terminator 
-                bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
-
+                bool kill{ false }, doAbort{ false }, stdConsDummy{ false };
                 for (int i = 0; i < maxLineLength; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
                     bool charFetched{ false };
-                    char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));           // time out only required if external IO
+                    char c = getCharacter(charFetched, kill, doAbort, stdConsDummy, (streamNumber <= 0));                   // time out only required if external IO
                     if (kill) {                                                                                             // kill request from caller ? 
                         _intermediateStringObjectCount--;
                     #if PRINT_HEAP_OBJ_CREA_DEL
@@ -588,7 +594,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                         return EVENT_kill;
                     }
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program (buffer is now flushed until nex line character) 
-                    if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                     if ((!charFetched) || ((c == terminator) && !isLineForm)) { break; }                                    // no more characters or [not for readLine()] terminator found ? break (terminator is not stored in buffer)
                     buffer[charsRead++] = c;
@@ -663,7 +668,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // when reading from a stream, read until a newline character is encountered or a timeout occurs
 
             char* buffer{};
-            execResult_type execResult{ result_execOK };
+            execResult_type execResult{ result_exec_OK };
             int valuesSaved{ 0 };
             bool sourceArgPresent = ((functionCode == fnccod_parseList) || (functionCode == fnccod_parseListFromVar));      // stream or variable
             bool parseListFromStream = ((functionCode == fnccod_cinParseList) || (functionCode == fnccod_parseList));
@@ -676,8 +681,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 int streamNumber{ 0 };
 
                 // perform checks and set pointer to IO stream or file
-                execResult = sourceArgPresent ? setStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) : setStream(streamNumber);   // stream for input 
-                if (execResult != result_execOK) { return execResult; }
+                execResult = sourceArgPresent ? setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber) :
+                    setActiveStreamTo(streamNumber);                                                                         // perform checks and set input stream 
+                if (execResult != result_exec_OK) { return execResult; }
 
                 // prepare to read characters
                 _intermediateStringObjectCount++;
@@ -689,13 +695,13 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             #endif
 
                 // read line from stream
-                bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
+                bool kill{ false }, doAbort{ false }, stdConsDummy{ false };
                 int charsRead{ 0 };
 
                 for (int i = 0; i < MAX_ALPHA_CONST_LEN; i++) {
                     // get a character if available and perform a regular housekeeping callback as well
                     bool charFetched{ false };
-                    char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));           // time out only required if external IO
+                    char c = getCharacter(charFetched, kill, doAbort, stdConsDummy, (streamNumber <= 0));                   // time out only required if external IO
                     if (kill) {                            // kill request from caller ? 
                         if (kill) {                                                                                         // kill request from caller ? 
                             _intermediateStringObjectCount--;
@@ -708,7 +714,6 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                         }
                     }
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program  
-                    if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
 
                     if (!charFetched) { break; }                                                                            // no more characters ? break
                     if (c == '\n') { break; }                                                                               // line end found ? break ('terminator'\n' is not stored in buffer)
@@ -750,7 +755,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
                 do {    // one loop only
                     if (argIndex > firstArgIndex) {      // first look for a separator
-                        // do not look for trailing space, to use strncmp() wih number of non-space characters found, because a space is not required after an operator
+                        // do not look for trailing space, to use strncmp() with number of non-space characters found, because a space is not required after an operator
                         bool isComma = (strncmp(term_comma, pch, commaLength) == 0);                                        // token corresponds to terminal name ? Then exit loop    
                         if (!isComma) { parsingResult = result_separatorExpected;  break; }
                         pNext += commaLength;                                                                               // move to next character
@@ -807,7 +812,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 if (returnArgIsArray && (oldArgIsString != (valueType == value_isStringPointer))) { execResult = result_array_valueTypeIsFixed; break; }
 
                 // if currently the variable contains a string object, delete it (if not empty)
-                if (oldArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_execOK) { break; } }
+                if (oldArgIsString) { execResult = deleteVarStringObject(pStackLvl); if (execResult != result_exec_OK) { break; } }
 
                 // save new value and value type
                 if (!returnArgIsArray || (oldArgValueType == valueType)) {
@@ -869,8 +874,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
 
             // execution error ?
-            if (execResult != result_execOK) {
-                _evalParsingError = parsingResult;                                                                        // only relevant in case a list parsing error occurred
+            if (execResult != result_exec_OK) {
+                _evalParsingError = parsingResult;                                                                          // only relevant in case a list parsing error occurred
                 return execResult;
             }
 
@@ -895,8 +900,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // findUntil(stream number, target string, terminator string)
 
             int streamNumber{ 0 };
-            execResult_type execResult = setStream(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber);                // stream for input
-            if (execResult != result_execOK) { return execResult; }
+            execResult_type execResult = setActiveStreamTo(argIsLongBits, argIsFloatBits, args[0], 0, streamNumber);        // perform checks and set input stream
+            if (execResult != result_exec_OK) { return execResult; }
 
             // check target string 
             if (!(argIsStringBits & (0x1 << 1))) { return result_arg_stringExpected; }
@@ -920,15 +925,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
 
             int targetCharsMatched{ 0 }, terminatorCharsMatched{ 0 };
             bool targetFound{ false };
-            bool kill{ false }, doStop{ false }, doAbort{ false }, stdConsDummy{ false };
+            bool kill{ false }, doAbort{ false }, stdConsDummy{ false };
 
             while (true) {
                 // get a character if available and perform a regular housekeeping callback as well
                 bool charFetched{ false };
-                char c = getCharacter(charFetched, kill, doStop, doAbort, stdConsDummy, (streamNumber <= 0));               // time out only required if external IO
+                char c = getCharacter(charFetched, kill, doAbort, stdConsDummy, (streamNumber <= 0));                       // time out only required if external IO
                 if (kill) { return EVENT_kill; }                                                                            // kill request from caller ? 
                 if (doAbort) { forcedAbortRequest = true; break; }                                                          // stop a running Justina program 
-                if (doStop) { forcedStopRequest = true; }                                                                   // stop a running program (do not produce stop event yet, wait until program statement executed)
                 if (!charFetched) { targetFound = false; break; }                                                           // target was not found
 
                 if (c == target[targetCharsMatched]) {
@@ -980,27 +984,29 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             fcnResultValueType = value_isLong;          // must be long (not float) value
             fcnResult.longConst = (functionCode == fnccod_tab) ? value * _tabSize : value;
 
-            switch (_activeFunctionData.activeCmd_commandCode) {
-                case cmdcod_dbout:
-                case cmdcod_dboutLine:
-                case cmdcod_cout:
-                case cmdcod_coutLine:
-                case cmdcod_print:
-                case cmdcod_printLine:
-                case cmdcod_printToVar:
-                case cmdcod_printLineToVar:
-                case cmdcod_coutList:
-                case cmdcod_printList:
-                case cmdcod_printListToVar:
-                {
-                    // this will only have effect if the function result is a direct argument of a print command (cout, print, etc...)
-                    ((functionCode == fnccod_tab) ? requestPrintTab : requestGotoPrintColumn) = true;
-                    fcnResult.longConst = value;
-                }
-                break;
+            if (_activeFunctionData.activeCmd_isInternal == 1) {
+                switch (_activeFunctionData.activeCmd_commandCode) {
+                    case cmdcod_dbout:
+                    case cmdcod_dboutLine:
+                    case cmdcod_cout:
+                    case cmdcod_coutLine:
+                    case cmdcod_print:
+                    case cmdcod_printLine:
+                    case cmdcod_printToVar:
+                    case cmdcod_printLineToVar:
+                    case cmdcod_coutList:
+                    case cmdcod_printList:
+                    case cmdcod_printListToVar:
+                    {
+                        // this will only have effect if the function result is a direct argument of a print command (cout, print, etc...)
+                        ((functionCode == fnccod_tab) ? requestPrintTab : requestGotoPrintColumn) = true;
+                        fcnResult.longConst = value;
+                    }
+                    break;
 
-                // other commands, or no command: do nothing
-                default: {}
+                    // other commands, or no command: do nothing
+                    default: {}
+                }
             }
         }
         break;
@@ -1043,7 +1049,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             char resultValueType;
             execResult_type execResult = launchEval(pFunctionStackLvl, args[0].pStringConst);
-            if (execResult != result_execOK) { return execResult; }
+            if (execResult != result_exec_OK) { return execResult; }
             // a dummy 'Justina function' (executing the parsed eval() expressions) has just been 'launched' (and will start after current (right parenthesis) token is processed)
             // because eval function name token and single argument will be removed from stack now (see below, at end of this procedure, after the switch() block), adapt CALLER evaluation stack levels
             _activeFunctionData.callerEvalStackLevels -= 2;
@@ -1162,7 +1168,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             int index = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : args[0].floatConst;
             if ((index <= 0) || (index >= suppliedArgCount)) { return result_arg_outsideRange; }
             fcnResultValueType = argValueType[index];
-            fcnResult = args[index];                                                                                        // OK if not string or empty string
+            fcnResult = args[index];                                                                                                    // OK if not string or empty string
 
             // result is a non-empty string ? an object still has to be created on the heap
             if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
@@ -1291,6 +1297,46 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
+        // -----------------------------
+        // retrieve batch file parameter
+        // -----------------------------
+
+        case fnccod_batchFilePar:
+        {
+            // this function has one argument: the batch file parameter to retrieve. 0 will return the full name of the open batch file,...
+            // ... 1..n will return the value of the (optional) arguments given when the batch file was called.
+
+            int blockType = _activeFunctionData.blockType;
+            if (blockType != block_batchFile) { return result_IO_onlyAllowedInBatchFile; }
+
+            int streamNumber = _activeFunctionData.statementInputStream;
+
+            if (!(argIsLongBits & (0x1 << 0)) && !(argIsFloatBits & (0x1 << 0))) { return result_arg_numberExpected; }
+            int argNumber = (argIsLongBits & (0x1 << 0)) ? args[0].longConst : int(args[0].floatConst);
+            int argCount = openFiles[streamNumber - 1].argCount;
+            if ((argNumber < 0) || (argNumber > argCount - 1)) { return result_arg_outsideRange; }      // first argument is batch file name
+
+            fcnResultValueType = openFiles[streamNumber - 1].pValueType[argNumber];
+            if (argNumber == 0) { fcnResult.pStringConst = openFiles[streamNumber - 1].filePath; }
+            else { fcnResult = openFiles[streamNumber - 1].pArgs[argNumber]; }    // OK for all value types
+
+            // result is a non-empty string ? an object still has to be created on the heap
+            if ((fcnResultValueType == value_isStringPointer) && (fcnResult.pStringConst != nullptr)) {
+                _intermediateStringObjectCount++;
+                char* temp = (argNumber == 0) ? openFiles[streamNumber - 1].filePath : openFiles[streamNumber - 1].pArgs[argNumber].pStringConst;
+
+                fcnResult.pStringConst = new char[strlen(temp) + 1];
+                strcpy(fcnResult.pStringConst, temp);
+            #if PRINT_HEAP_OBJ_CREA_DEL
+                _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
+                _pDebugOut->print("     batch file arg ");   _pDebugOut->println(fcnResult.pStringConst);
+            #endif            
+            }
+        }
+        break;
+
+
+
         // ---------------------------------------------------
         // format a number or a string into a formatted string
         // ---------------------------------------------------
@@ -1370,7 +1416,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             // check other arguments
             if (argCount > 2) {
                 execResult_type execResult = checkFmtSpecifiers(false, argCount - 2, argValueType + 2, args + 2, specifier, precision, flags);
-                if (execResult != result_execOK) { return execResult; }
+                if (execResult != result_exec_OK) { return execResult; }
             }
 
             // is specifier acceptable for data type ?
@@ -1582,11 +1628,11 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         case fnccod_bitSet:             // 2 arguments: long value, bit (0 to 31) to set. New value is returned 
         case fnccod_bitWrite:           // 3 arguments: long value, bit (0 to 31), new bit value (0 or 1). New value is returned 
 
-            // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
+        // extra Justina byte manipulation functons. Byte argument indicates which byte to read or write
         case fnccod_byteRead:           // 2 arguments: long, byte to read (0 to 3). Value returned is between 0x00 and 0xFF.     
         case fnccod_byteWrite:          // 3 arguments: long, byte to write (0 to 3), value to write (lowest 8 bits of argument). New value is returned    
 
-            // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
+        // extra Justina bit manipulation functons. Mask argument indicates which bits to read, set, clear or write
         case fnccod_wordMaskedRead:     // 2 arguments: long value, mask. Returns masked value 
         case fnccod_wordMaskedClear:    // 2 arguments: long value, mask = bits to clear: bits indicated by mask are cleared. New value is returned
         case fnccod_wordMaskedSet:      // 2 arguments: long value, mask = bits to set: bits indicated by mask are set. New value is returned 
@@ -1724,12 +1770,10 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             else if (functionCode == fnccod_delay) {                                                                        // args: milliseconds    
                 unsigned long startTime = millis();
                 while (startTime + (unsigned long)args[0].longConst > millis()) {
-                    bool kill, doStop{}, doAbort{};
-                    execPeriodicHousekeeping(&kill, &doStop, &doAbort);
+                    bool kill, doAbort{};
+                    execPeriodicHousekeeping(&kill, &doAbort);
                     if (kill) { return EVENT_kill; }                                                                        // kill Justina interpreter ? (buffer is now flushed until next line character)
                     if (doAbort) { forcedAbortRequest = true; break; }                                                      // stop a running Justina program 
-                    if (doStop) { forcedStopRequest = true; }                                                               // stop a running program (do not produce stop event yet, wait until program statement executed)
-                    if (forcedStopRequest) { break; }                                                                       // atypical flow: as this is a pure delay not doing anything else, break on stop as well
                 }
             }
             else if (functionCode == fnccod_pinMode) {
@@ -1770,7 +1814,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             else if (functionCode == fnccod_tone) {                                                                         // args: pin, frequency, (optional) duration
                 (suppliedArgCount == 2) ? tone(args[0].longConst, args[1].longConst) : tone(args[0].longConst, args[1].longConst, args[2].longConst);
             }
-            else if (functionCode == fnccod_random) {                                                                       //args: bondaries
+            else if (functionCode == fnccod_random) {                                                                       //args: boundaries
                 fcnResult.longConst = (suppliedArgCount == 1) ? random(args[0].longConst) : random(args[0].longConst, args[1].longConst);
             }
             else if (functionCode == fnccod_randomSeed) { randomSeed(args[0].longConst); }                                  // arg: seed
@@ -1886,7 +1930,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             _intermediateStringObjectCount++;
             fcnResult.pStringConst = new char[2];
             fcnResult.pStringConst[0] = asciiCode;
-            fcnResult.pStringConst[1] = '\0';                                                                               // terminating \0
+            fcnResult.pStringConst[1] = '\0';                                                           // terminating \0
         #if PRINT_HEAP_OBJ_CREA_DEL
             _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
             _pDebugOut->print("               char ");   _pDebugOut->println(fcnResult.pStringConst);
@@ -1961,7 +2005,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         {
             LE_evalStack* pStackLvl{ (suppliedArgCount == 3) ? _pEvalStackMinus2 : _pEvalStackMinus1 };                     // stack level for first argument (string variable)
             bool isConstant = (!(argIsVarBits & (0x1 << 0)) || (pStackLvl->varOrConst.sourceVarScopeAndFlags & var_isConstantVar));
-            if (isConstant) { return result_arg_variableExpected; }                                                            // first argument must be a variable string
+            if (isConstant) { return result_arg_variableExpected; }                                                         // first argument must be a variable string
             if (!(argIsStringBits & (0x1 << 0))) { return result_arg_stringExpected; }
             if (!(argIsLongBits & (0x1 << 1))) { return result_arg_integerTypeExpected; }
             int charPos = 1;                                                                                                // first character in string
@@ -1996,7 +2040,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 c = args[0].pStringConst[0];                                                                                // only first character in string will be repeated
             }
 
-            int lengthArg = (functionCode == fnccod_repeatchar) ? 1 : 0;                                                       // index for argument containing desired length of result string
+            int lengthArg = (functionCode == fnccod_repeatchar) ? 1 : 0;                                                    // index for argument containing desired length of result string
             if (!(argIsLongBits & (0x1 << lengthArg)) && !(argIsFloatBits & (0x1 << lengthArg))) { return result_arg_numberExpected; }
             int len = ((argIsLongBits & (0x1 << lengthArg))) ? args[lengthArg].longConst : (long)args[lengthArg].floatConst;    // convert to long if needed
             if ((len <= 0) || (len > MAX_ALPHA_CONST_LEN)) { return result_arg_outsideRange; }
@@ -2258,8 +2302,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
         break;
 
 
-        // convert a string to a new string containing all characters into 2 alphanumeric digits
-        // -------------------------------------------------------------------------------------
+        // get the current execution error
+        // -------------------------------
 
         case fnccod_getTrappedErr:
         {
@@ -2273,7 +2317,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 if (returnArgIsArray && !isLong) { return result_array_valueTypeIsFixed; }
 
                 // if currently the variable contains a string object, delete it (if not empty)
-                if (isString) { execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_execOK) { break; } }
+                if (isString) { execResult_type execResult = deleteVarStringObject(_pEvalStackTop); if (execResult != result_exec_OK) { break; } }
 
                 // save evaluation parsing error (or result_parsing_OK, if not an evaluation parsing error)
                 *_pEvalStackTop->varOrConst.value.pLongConst = _trappedEvalParsingError;
@@ -2360,14 +2404,14 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 }
                 break;
 
-                case 20:                                                                        // trace string
+                case 20:                                                                        // watch string
                 {
                     fcnResultValueType = value_isStringPointer;
                     fcnResult.pStringConst = nullptr;                                           // init (empty string)
-                    if (_pTraceString != nullptr) {
+                    if (_pwatchString != nullptr) {
                         _intermediateStringObjectCount++;
-                        fcnResult.pStringConst = new char[strlen(_pTraceString) + 1];
-                        strcpy(fcnResult.pStringConst, _pTraceString);
+                        fcnResult.pStringConst = new char[strlen(_pwatchString) + 1];
+                        strcpy(fcnResult.pStringConst, _pwatchString);
                     #if PRINT_HEAP_OBJ_CREA_DEL
                         _pDebugOut->print("\r\n+++++ (Intermd str) ");   _pDebugOut->println((uint32_t)fcnResult.pStringConst, HEX);
                         _pDebugOut->print("         sysval(20) ");   _pDebugOut->println(fcnResult.pStringConst);
@@ -2376,7 +2420,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 }
                 break;
 
-                case 21: fcnResult.longConst = _printTraceValueOnly; break;                     // view traced values without expression texts ?
+                case 21: fcnResult.longConst = _printWatchValueOnly; break;                     // view watched expression results without expression texts ?
+
+                case 22: fcnResult.longConst = _pBreakpoints->_breakpointsStatusDraft ? 0 : 1; break;       // breakpoints are active ?
 
                 // product info
                 // ------------
@@ -2403,9 +2449,9 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
                 case 37:fcnResult.longConst = flowCtrlStack.getElementCount(); break;           // flow control stack element count (call stack depth + stack levels used by open blocks)
                 case 38:fcnResult.longConst = _callStackDepth; break;                           // call stack depth; this excludes stack levels used by blocks (while, if, ...)
                 case 39:fcnResult.longConst = _openDebugLevels; break;                          // number of stopped programs
-                case 40:fcnResult.longConst = parsedCommandLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
+                case 40:fcnResult.longConst = parsedStatementLineStack.getElementCount(); break;  // immediate mode parsed programs stack element count: stopped program count + open eval() strings (being executed)
 
-                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (across linked lists: count is static)
+                case 41: fcnResult.longConst = evalStack.getCreatedObjectCount(); break;        // created list object count (cumulative and across linked lists: count is static)
 
                 case 42:                                                                        // current active object count
                 case 43:                                                                        // current accumulated object count errors since cold start
@@ -2462,8 +2508,8 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
     }                                                                                           // end switch
 
 
-        // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
-        // -------------------------------------------------------------------------------------------------------------------
+    // post-process: delete function name token and arguments from evaluation stack, create stack entry for function result 
+    // -------------------------------------------------------------------------------------------------------------------
 
     clearEvalStackLevels(suppliedArgCount + 1);
 
@@ -2484,7 +2530,7 @@ Justina::execResult_type Justina::execInternalCppFunction(LE_evalStack*& pFuncti
             | (requestGotoPrintColumn ? isPrintColumnRequest : 0);                                                          // set tab() or col() function flag if requested
     }
 
-    return result_execOK;
+    return result_exec_OK;
 }
 
 
