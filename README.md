@@ -109,7 +109,8 @@ and this without the need for Justina to have any knowledge about the hardware (
   * setting up a TCP/IP server for use as an additional Justina IO channel
   * using Justina system callbacks to maintain the TCP/IP connection, blink a heartbeat LED and set status LEDs to indicate the TCP/IP connection state
   * using Justina user c++ functions to control the TCP/IP connection from within Justina
-  * Justina_TCPIP_multi: same as Justina_TCPIP, but for multiple concurrent TCP/IP clients and with managed client sessions
+* Justina_TCPIP_multi: same as Justina_TCPIP, but for multiple concurrent TCP/IP clients and with managed client sessions 
+
 
 # Justina language examples
 A few Justina language example files are provided in the repository folder 'extras/Justina_language_examples'. These text files obey the 8.3 file format, to make them compatible with the Arduino SD card file system. Also, they all have the '.jus' extension: opening these files in Notepad++ will automatically invoke Justina language highlighting (if the Justina language extension is installed).
@@ -125,8 +126,8 @@ The example files are:
 * overlap.jus: two method to print lines with overlapping print fields
 * SD_test.jus: perform some basic SD card tests
 * SD_parse.jus: write formatted data to an SD card, read it back and immediately parse this data into variables
-* web_calc.jus: a web server creating a web page giving access to a scientific calculator 
-* web_cal2.jus: same as web_calc.jus, but for multiple concurrent HTTP clients and with managed client sessions
+* web_calc.jus: HTTP server creating a web page giving access to a scientific calculator. Use with Arduino program Justina_TCPIP 
+* web_cal2.jus: same as web_calc.jus, but for multiple concurrent HTTP clients and with managed client sessions. Use with Arduino program Justina_TCPIP_multi
 
 ![image](https://github.com/Herwig9820/Justina_interpreter/assets/74488682/7c0fa15c-bede-4925-8398-661a0ea572b0)
 
