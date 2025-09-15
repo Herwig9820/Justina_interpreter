@@ -133,4 +133,4 @@ The example files are:
 
 
 # Documentation
-Full documentation is provided in the repository ' extras' folder. 
+Full documentation is provided in the repository ' docs' folder. 
